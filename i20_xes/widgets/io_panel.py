@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QRadioButton, QSlider
 )
 
-
 class IOPanel(QGroupBox):
     def __init__(self, parent=None):
         super().__init__("I/O", parent)
@@ -38,33 +37,39 @@ class RXESPanel(QGroupBox):
         super().__init__("RXES", parent)
         v = QVBoxLayout(self)
 
-        # Detector selection: Upper / Lower
+        # Detector selection
         det_box = QGroupBox("Detector channel")
         det_layout = QHBoxLayout(det_box)
         self.rb_upper = QRadioButton("Upper")
         self.rb_lower = QRadioButton("Lower")
         self.rb_upper.setChecked(True)
-        self.rb_upper.setToolTip("Use ω from XESEnergyUpper and intensity from FFI1_medipix1")
-        self.rb_lower.setToolTip("Use ω from XESEnergyLower and intensity from FFI1_medipix2")
         det_layout.addWidget(self.rb_upper)
         det_layout.addWidget(self.rb_lower)
 
-        # Mode selection: Incident Energy vs Energy Transfer
+        # Mode selection
         mode_box = QGroupBox("Display mode")
         mode_layout = QHBoxLayout(mode_box)
         self.rb_mode_incident = QRadioButton("Incident Energy")
         self.rb_mode_transfer = QRadioButton("Energy Transfer")
         self.rb_mode_incident.setChecked(True)
-        self.rb_mode_incident.setToolTip("Plot Ω (X) vs ω (Y)")
-        self.rb_mode_transfer.setToolTip("Plot Ω (X) vs (Ω − ω) (Y)")
         mode_layout.addWidget(self.rb_mode_incident)
         mode_layout.addWidget(self.rb_mode_transfer)
 
-        # ROI Extraction inside RXES
+        # Normalisation section (before ROI)
+        norm_box = QGroupBox("Normalisation")
+        norm_layout = QVBoxLayout(norm_box)
+        rown = QHBoxLayout()
+        self.btn_load_xes = QPushButton("Load XES…")
+        self.lbl_norm = QLabel("No normalisation applied")
+        rown.addWidget(self.btn_load_xes)
+        rown.addStretch(1)
+        norm_layout.addLayout(rown)
+        norm_layout.addWidget(self.lbl_norm)
+
+        # ROI Extraction section
         roi_box = QGroupBox("ROI Extraction")
         roi_layout = QVBoxLayout(roi_box)
 
-        # Extraction type
         row1 = QHBoxLayout()
         self.rb_extr_incident = QRadioButton("Constant Incident (Ω)")
         self.rb_extr_emission = QRadioButton("Constant Emission (ω)")
@@ -75,7 +80,6 @@ class RXESPanel(QGroupBox):
         row1.addWidget(self.rb_extr_transfer)
         row1.addStretch(1)
 
-        # Line management buttons
         row2 = QHBoxLayout()
         self.btn_add_line = QPushButton("Add line")
         self.btn_remove_line = QPushButton("Remove line")
@@ -87,7 +91,6 @@ class RXESPanel(QGroupBox):
         row2.addWidget(self.btn_update_spectrum)
         row2.addWidget(self.btn_save_spectrum)
 
-        # Bandwidth slider scaled: 0.2 eV steps from 0.2..3.0 eV
         row3 = QHBoxLayout()
         row3.addWidget(QLabel("Band width (eV):"))
         self.sl_width = QSlider(Qt.Horizontal)
@@ -95,7 +98,7 @@ class RXESPanel(QGroupBox):
         self.sl_width.setMaximum(15)     # 3.0 eV
         self.sl_width.setSingleStep(1)   # 0.2 eV per step
         self.sl_width.setPageStep(1)
-        self.sl_width.setValue(10)       # default 2.0 eV (10/5)
+        self.sl_width.setValue(10)       # 2.0 eV
         self.lbl_width = QLabel("2.0 eV")
         row3.addWidget(self.sl_width)
         row3.addWidget(self.lbl_width)
@@ -104,12 +107,14 @@ class RXESPanel(QGroupBox):
         roi_layout.addLayout(row2)
         roi_layout.addLayout(row3)
 
+        # Compose RXES panel
         v.addWidget(det_box)
         v.addWidget(mode_box)
+        v.addWidget(norm_box)   # normalisation before ROI
         v.addWidget(roi_box)
         v.addStretch(1)
 
-        # Update label when slider moves
+        # Small label updates
         self.sl_width.valueChanged.connect(lambda v: self.lbl_width.setText(f"{v/5:.1f} eV"))
 
     def bandwidth_ev(self) -> float:
