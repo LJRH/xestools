@@ -1,8 +1,10 @@
 from __future__ import annotations
 from typing import Optional, Tuple
 import numpy as np
-from PySide6 import QtWidgets
+import logging
+from PySide6 import QtWidgets, QtCore
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
@@ -12,9 +14,16 @@ class NormaliseDialog(QtWidgets.QDialog):
     Modal dialog to view a 1D XES spectrum and select an energy range.
     Computes the numeric area under the curve in the selected range.
     Compatible with multiple Matplotlib versions.
+
+    Zoom/pan features:
+      - Matplotlib toolbar (Home/Zoom/Pan)
+      - Scroll-wheel zoom around cursor (x-axis)
+      - Double-click to reset viewr
+      - SpanSelector disabled while toolbar pan/zoom is active
     """
     def __init__(self, x: np.ndarray, y: np.ndarray, parent=None, title: str = "XES Spectrum"):
         super().__init__(parent)
+        self._log = logging.getLogger("NormaliseDialog")
         self.setWindowTitle(title)
         self.resize(800, 500)
 
@@ -40,8 +49,26 @@ class NormaliseDialog(QtWidgets.QDialog):
         # Persistent highlight for selected band (independent of SpanSelector behavior)
         self._hl = None  # matplotlib artist from axvspan
 
+        # Track mpl connection ids so we can disconnect on close
+        self._mpl_cids = []
+
         # Span selector with compatibility across versions
         self._make_span_selector()
+
+        # --- Toolbar & zoom/pan additions ------------------------------------
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        # Track toolbar actions to toggle SpanSelector activity accordingly
+
+        # Track toolbar actions to toggle SpanSelector activity accordingly
+        # (toolbar._active is 'PAN'/'ZOOM'/None in NavigationToolbar2)
+        self.toolbar.actionTriggered.connect(self._defer_sync_span_with_toolbar)
+        # Also catch key presses that may toggle modes
+        self.canvas.mpl_connect("key_press_event", self._on_key_event_toolbar_sync)
+
+        # Scroll wheel zoom and double-click reset
+        self.canvas.mpl_connect("scroll_event", self._on_scroll_zoom)
+        self.canvas.mpl_connect("button_press_event", self._on_button_press_reset)
+        # ---------------------------------------------------------------------
 
         # Buttons and info
         self.lbl = QtWidgets.QLabel(self._fmt_area())
@@ -61,12 +88,17 @@ class NormaliseDialog(QtWidgets.QDialog):
         btn_row.addWidget(self.btn_cancel)
 
         lay = QtWidgets.QVBoxLayout(self)
+        # Place toolbar above the canvas
+        lay.addWidget(self.toolbar)           # <--- added
         lay.addWidget(self.canvas)
         lay.addWidget(self.lbl)
         lay.addLayout(btn_row)
 
+        # Ensure initial limits are sensible
+        self._set_full_view()
         self.canvas.draw_idle()
 
+    # ------------------------- SpanSelector setup -------------------------
     def _make_span_selector(self):
         # Try new API (props + interactive)
         try:
@@ -74,7 +106,7 @@ class NormaliseDialog(QtWidgets.QDialog):
                 self.ax, self._on_select, "horizontal",
                 useblit=True,
                 interactive=True,                             # newer mpl
-                props=dict(alpha=0.2, facecolor="tab:orange") # newer mpl (replaces rectprops)
+                props=dict(alpha=0.2, facecolor="tab:orange") # newer mpl
             )
             return
         except TypeError:
@@ -90,6 +122,7 @@ class NormaliseDialog(QtWidgets.QDialog):
             # Last resort: minimal args
             self.span = SpanSelector(self.ax, self._on_select, "horizontal")
 
+    # ------------------------- Selection handlers -------------------------
     def _on_select(self, xmin: float, xmax: float):
         if xmin is None or xmax is None:
             return
@@ -135,3 +168,89 @@ class NormaliseDialog(QtWidgets.QDialog):
 
     def selected_range(self) -> Optional[Tuple[float, float]]:
         return self._sel
+
+    # ------------------------- View/zoom helpers --------------------------
+    def _set_full_view(self):
+        """Reset axes to the full data extent and autoscale Y."""
+        if self._x.size == 0:
+            return
+        self.ax.set_xlim(float(self._x.min()), float(self._x.max()))
+        self.ax.relim()
+        self.ax.autoscale_view(scaley=True)
+        # keep labels/title as-is
+
+    def _on_button_press_reset(self, event):
+        """Double-click anywhere to reset the view."""
+        if getattr(event, "dblclick", False):
+            self._set_full_view()
+            self.canvas.draw_idle()
+
+    def _on_scroll_zoom(self, event):
+        """Scroll-wheel zoom on X around the cursor."""
+        # Ignore if event has no data coords (outside axes)
+        if event.inaxes != self.ax:
+            return
+        # If toolbar is actively panning/zooming, let it handle the wheel (some backends do)
+        active = getattr(self.toolbar, "_active", None)
+        if active in ("PAN", "ZOOM"):
+            return
+        xdata = event.xdata
+        if xdata is None:
+            return
+
+        # Determine scroll direction in a backend/version-robust way
+        # Matplotlib >=3.6: event.step is +/-1; older: event.button in {'up','down'}
+        step = getattr(event, "step", None)
+        if step is None:
+            direction = +1 if getattr(event, "button", "") == "up" else -1
+        else:
+            direction = np.sign(step) or 1
+
+        # Zoom factor per scroll notch
+        base_scale = 1.2
+        scale = (1 / base_scale) if direction > 0 else base_scale
+
+        xmin, xmax = self.ax.get_xlim()
+        width = (xmax - xmin) * scale
+        # Keep xdata under the cursor stationary by scaling left/right proportionally
+        left = xdata - (xdata - xmin) * (width / (xmax - xmin))
+        right = xdata + (xmax - xdata) * (width / (xmax - xmin))
+
+        # Optional: clamp to full data bounds
+        if self._x.size:
+            xlo, xhi = float(self._x.min()), float(self._x.max())
+            # avoid inverted limits
+            left, right = max(min(left, right), xlo), min(max(left, right), xhi)
+
+        self.ax.set_xlim(left, right)
+
+        # Optionally autoscale Y to visible X range
+        vis = (self._x >= left) & (self._x <= right)
+        if np.any(vis):
+            yslice = self._y[vis]
+            if np.isfinite(yslice).any():
+                ymin, ymax = np.nanmin(yslice), np.nanmax(yslice)
+                if np.isfinite(ymin) and np.isfinite(ymax) and ymin != ymax:
+                    pad = 0.05 * (ymax - ymin)
+                    self.ax.set_ylim(ymin - pad, ymax + pad)
+
+        self.canvas.draw_idle()
+
+    # -------------- Keep SpanSelector off while toolbar active ------------
+    def _defer_sync_span_with_toolbar(self, *_):
+        # Defer to end of event loop so toolbar._active is updated
+        QtCore.QTimer.singleShot(0, self._sync_span_with_toolbar)
+
+    def _on_key_event_toolbar_sync(self, event):
+        # Toolbar toggles can also happen via keys; keep span in sync
+        self._defer_sync_span_with_toolbar()
+
+    def _sync_span_with_toolbar(self):
+        """Disable SpanSelector while toolbar pan/zoom is active."""
+        active = getattr(self.toolbar, "_active", None)
+        enable_span = (active is None)
+        try:
+            self.span.set_active(enable_span)
+        except Exception:
+            # Older Matplotlib may not have set_active; in that case, do nothing
+            pass

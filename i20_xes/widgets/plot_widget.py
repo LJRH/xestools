@@ -9,9 +9,8 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from i20_xes.modules.dataset import DataSet
 
-_LINE_COLORS = ["#ffffff", "#ffcc00", "#00ccff"]  # up to 3 lines
+_LINE_COLORS = ["#ffffff", "#ffcc00", "#00ccff"]
 _BAND_ALPHA = 0.15
-
 
 class PlotWidget(QWidget):
     lines_changed = QtCore.Signal()
@@ -28,7 +27,7 @@ class PlotWidget(QWidget):
 
         self._cbar = None
         self._lines: List[Line2D] = []
-        self._bands: List = []
+        self._bands: List = []  # keep handles to band artists (axvspan/axhspan)
         self._drag_idx = None
         self._line_orientation = "vertical"
         self._bandwidth = 2.0
@@ -43,6 +42,7 @@ class PlotWidget(QWidget):
         self.canvas.mpl_connect("button_release_event", self._on_release)
         self.canvas.mpl_connect("motion_notify_event", self._on_motion)
 
+    # ------------ helpers to suppress signals ------------
     def set_signal_suppressed(self, state: bool):
         self._suppress_emit = bool(state)
 
@@ -50,17 +50,25 @@ class PlotWidget(QWidget):
         if not self._suppress_emit:
             self.lines_changed.emit()
 
+    # ------------ core clear/plot ------------
     def clear(self):
+        # Remove colorbar first
         if self._cbar is not None:
             try:
                 self._cbar.remove()
             except Exception:
                 pass
             self._cbar = None
+
+        # Remove bands BEFORE clearing axes to avoid residual artists
+        self._remove_bands()
+
+        # Clear axes
         self.ax_img.cla()
         self.ax_prof.cla()
+
+        # Reset
         self._lines = []
-        self._bands = []
         self._drag_idx = None
 
     def plot(self, dataset: DataSet | None):
@@ -69,24 +77,28 @@ class PlotWidget(QWidget):
 
         if dataset is None:
             self.ax_img.set_title("No data loaded")
+            self.ax_prof.set_visible(True)  # keep ROI subplot visible for future RXES
             self.canvas.draw_idle()
             return
 
         title = os.path.basename(dataset.source) if dataset.source else "Data"
 
         if dataset.kind == "1D":
+            # Hide profile axis for simple 1D
+            self.ax_prof.set_visible(False)
             x = dataset.x if dataset.x is not None else np.arange(len(dataset.y))
             y = dataset.y
             self.ax_img.plot(x, y, lw=1.5)
             self.ax_img.set_xlabel(dataset.xlabel or "Energy")
-            self.ax_img.set_ylabel(dataset.ylabel or "Intensity (XES)")
+            self.ax_img.set_ylabel(dataset.ylabel or "Intensity")
             self.ax_img.set_title(title)
         elif dataset.kind == "2D":
+            # Show profile axis for RXES
+            self.ax_prof.set_visible(True)
+
             Z = dataset.z
             if dataset.x2d is not None and dataset.y2d is not None:
-                X = dataset.x2d
-                Y = dataset.y2d
-                pc = self.ax_img.pcolormesh(X, Y, Z, shading="auto", cmap="viridis")
+                pc = self.ax_img.pcolormesh(dataset.x2d, dataset.y2d, Z, shading="auto", cmap="viridis")
                 self._cbar = self.figure.colorbar(pc, ax=self.ax_img)
             else:
                 extent = None
@@ -106,36 +118,55 @@ class PlotWidget(QWidget):
             self.ax_img.set_ylabel(dataset.ylabel or "Y")
             self.ax_img.set_title(title)
 
-        self.ax_prof.set_ylabel("Sum")
-        self.ax_prof.grid(True, alpha=0.2)
-        self.autoscale_current()
+            # Prepare profile axis
+            self.ax_prof.set_ylabel("Integrated counts")
+            self.ax_prof.grid(True, alpha=0.3)
+
+            # Ensure at least one ROI line for RXES, and draw initial bands
+            if len(self._lines) == 0:
+                self._create_initial_line()
+            self._update_bands()
+
         self.canvas.draw_idle()
 
-    def autoscale_current(self):
-        """Autoscale image axes from current dataset."""
-        ds = self._dataset
-        if ds is None or ds.kind != "2D":
-            return
-        if ds.x2d is not None and ds.y2d is not None:
-            xmn = float(np.nanmin(ds.x2d)); xmx = float(np.nanmax(ds.x2d))
-            ymn = float(np.nanmin(ds.y2d)); ymx = float(np.nanmax(ds.y2d))
-            self.ax_img.set_xlim(xmn, xmx)
-            self.ax_img.set_ylim(ymn, ymx)
-        elif ds.x is not None and ds.y is not None:
-            self.ax_img.set_xlim(float(ds.x.min()), float(ds.x.max()))
-            self.ax_img.set_ylim(float(ds.y.min()), float(ds.y.max()))
+    # ------------ XES overlays (hide ROI subplot) ------------
+    def plot_xes_bundle(self, curves, avg=None, title="XES bundle"):
+        self.clear()
+        self.ax_prof.set_visible(False)
+        self.ax_prof.cla()
+
+        for c in curves:
+            x = c.get("x"); y = c.get("y")
+            if x is None or y is None:
+                continue
+            self.ax_img.plot(x, y, lw=1.0, alpha=c.get("alpha", 0.7),
+                             color=c.get("color", None), label=c.get("label", ""))
+
+        if avg is not None and avg.get("x") is not None:
+            self.ax_img.plot(avg["x"], avg["y"], lw=2.2, color="black", label=avg.get("label", "Average"))
+
+        self.ax_img.set_xlabel("ω (eV)")
+        self.ax_img.set_ylabel("Intensity (XES)")
+        self.ax_img.set_title(title)
+        try:
+            if len(curves) <= 12:
+                self.ax_img.legend(loc="best", fontsize=9)
+        except Exception:
+            pass
+
         self.canvas.draw_idle()
 
-    # ----- ROI lines -----
-
+    # ------------ ROI line/band API ------------
     def set_line_orientation(self, orientation: str):
         assert orientation in ("vertical", "horizontal")
         self._line_orientation = orientation
+        if len(self._lines) == 0:
+            self._create_initial_line()
         self._update_bands()
         self._emit_lines_changed()
 
     def set_bandwidth(self, width: float):
-        self._bandwidth = max(0.2, min(3.0, float(width)))
+        self._bandwidth = max(0.0, float(width))
         self._update_bands()
         self._emit_lines_changed()
 
@@ -176,32 +207,6 @@ class PlotWidget(QWidget):
         self.canvas.draw_idle()
         self._emit_lines_changed()
 
-    def _create_initial_line(self):
-        if self._line_orientation == "vertical":
-            xmin, xmax = self.ax_img.get_xlim()
-            x = xmin + 0.5 * (xmax - xmin)
-            ln = self.ax_img.axvline(x, color=_LINE_COLORS[0], lw=1.8, alpha=0.95)
-        else:
-            ymin, ymax = self.ax_img.get_ylim()
-            y = ymin + 0.5 * (ymax - ymin)
-            ln = self.ax_img.axhline(y, color=_LINE_COLORS[0], lw=1.8, alpha=0.95)
-        self._lines = [ln]
-
-    def _add_line_internal(self):
-        idx = len(self._lines)
-        color = _LINE_COLORS[min(idx, len(_LINE_COLORS) - 1)]
-        if self._line_orientation == "vertical":
-            xmin, xmax = self.ax_img.get_xlim()
-            frac = 0.33 if idx == 1 else 0.66
-            x = xmin + frac * (xmax - xmin)
-            ln = self.ax_img.axvline(x, color=color, lw=1.6, alpha=0.9, ls="--")
-        else:
-            ymin, ymax = self.ax_img.get_ylim()
-            frac = 0.33 if idx == 1 else 0.66
-            y = ymin + frac * (ymax - ymin)
-            ln = self.ax_img.axhline(y, color=color, lw=1.6, alpha=0.9, ls="--")
-        self._lines.append(ln)
-
     def get_line_positions(self) -> List[float]:
         pos = []
         for ln in self._lines:
@@ -222,13 +227,45 @@ class PlotWidget(QWidget):
         self.canvas.draw_idle()
         self._emit_lines_changed()
 
-    def _update_bands(self):
-        for b in self._bands:
+    def _create_initial_line(self):
+        if self._line_orientation == "vertical":
+            xmin, xmax = self.ax_img.get_xlim()
+            x = xmin + 0.5 * (xmax - xmin)
+            ln = self.ax_img.axvline(x, color=_LINE_COLORS[0], lw=1.8, alpha=0.95)
+        else:
+            ymin, ymax = self.ax_img.get_ylim()
+            y = ymin + 0.5 * (ymax - ymin)
+            ln = self.ax_img.axhline(y, color=_LINE_COLORS[0], lw=1.8, alpha=0.95)
+        self._lines = [ln]
+
+    def _add_line_internal(self):
+        idx = len(self._lines)
+        color = _LINE_COLORS[min(idx, len(_LINE_COLORS) - 1)]
+        if self._line_orientation == "vertical":
+            xmin, xmax = self.ax_img.get_xlim()
+            x = xmin + (0.33 if idx == 1 else 0.66) * (xmax - xmin)
+            ln = self.ax_img.axvline(x, color=color, lw=1.6, alpha=0.9, ls="--")
+        else:
+            ymin, ymax = self.ax_img.get_ylim()
+            y = ymin + (0.33 if idx == 1 else 0.66) * (ymax - ymin)
+            ln = self.ax_img.axhline(y, color=color, lw=1.6, alpha=0.9, ls="--")
+        self._lines.append(ln)
+
+    # ------------ band management ------------
+    def _remove_bands(self):
+        # Safely remove any existing band artists
+        if not self._bands:
+            return
+        for b in list(self._bands):
             try:
                 b.remove()
             except Exception:
                 pass
-        self._bands = []
+        self._bands.clear()
+
+    def _update_bands(self):
+        # Remove previous bands before drawing new ones
+        self._remove_bands()
         if len(self._lines) == 0 or self._bandwidth <= 0:
             self.canvas.draw_idle()
             return
@@ -244,7 +281,8 @@ class PlotWidget(QWidget):
             self._bands.append(band)
         self.canvas.draw_idle()
 
-    # Mouse interaction
+    # ------------ mouse interaction ------------
+    # _on_press, _on_motion, _on_release remain the same but call self._update_bands() after moving lines.
 
     def _on_press(self, event):
         if event.inaxes != self.ax_img or len(self._lines) == 0:
@@ -284,6 +322,7 @@ class PlotWidget(QWidget):
     def _on_release(self, event):
         self._drag_idx = None
         self._emit_lines_changed()
+        self._update_bands()
 
     # Profile panel
 
