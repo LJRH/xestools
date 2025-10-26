@@ -2,7 +2,7 @@ Bootstrap: docker
 From: python:3.12-slim-bookworm
 
 %labels
-    AppName        i20-xes-rxes-viewer
+    AppName        xestools
     Description    "I20 XES/RXES Viewer"
     Maintainer     "luke.higgins@diamond.ac.uk"
 
@@ -64,7 +64,7 @@ From: python:3.12-slim-bookworm
     mkdir -p /app
 
 %files
-    /mnt/i20xes /app
+    i20xes /app
 
 %runscript
     . /opt/venv/bin/activate
