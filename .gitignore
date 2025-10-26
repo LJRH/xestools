@@ -1,0 +1,11 @@
+# Git
+.git
+
+# Ignore macOS Finder files
+.DS_Store
+
+# Ignore Python bytecode
+__pycache__/
+*.py[cod]
+
+

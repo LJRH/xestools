@@ -1,1 +1,1 @@
-__all__ = ["io_panel", "plot_widget", "normalise_dialog"]
+__all__ = ["io_panel", "plot_widget", "normalise_dialog", "background_dialog"]
