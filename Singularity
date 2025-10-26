@@ -64,7 +64,7 @@ From: python:3.12-slim-bookworm
     mkdir -p /app
 
 %files
-    i20xes /app
+    . /app
 
 %runscript
     . /opt/venv/bin/activate
