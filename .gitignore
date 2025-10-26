@@ -1,5 +1,6 @@
 # Git
 .git
+.gitignore
 
 # Ignore macOS Finder files
 .DS_Store
@@ -8,4 +9,4 @@
 __pycache__/
 *.py[cod]
 
-
+i20xes.sif

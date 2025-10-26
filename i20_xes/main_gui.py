@@ -42,6 +42,7 @@ class MainWindow(QMainWindow):
 
         # XES multi-scan workflow
         self._xes_items: List[dict] = []  # each: dict(path, channel, x, y, label)
+        self._xes_norm_target = None  # ('avg', None) or ('single', index)
         self._xes_avg: Optional[Tuple[np.ndarray, np.ndarray]] = None
         self._xes_avg_norm_factor: Optional[float] = None
 
@@ -107,6 +108,7 @@ class MainWindow(QMainWindow):
         # Buffer for background-subtracted average
         self._xes_avg_bkgsub: Optional[Tuple[np.ndarray, np.ndarray]] = None
         self.xes_panel.btn_average.clicked.connect(self.on_xes_average_selected)
+        self.xes_panel.btn_save_norm.clicked.connect(self.on_xes_save_normalised)
         self.xes_panel.btn_save_average.clicked.connect(self.on_xes_save_average)
         self.xes_panel.btn_save_avg_norm.clicked.connect(self.on_xes_save_normalised_average)
         self.xes_panel.btn_load_xes.clicked.connect(self.on_xes_normalise_average)  # Normalisation
@@ -115,8 +117,8 @@ class MainWindow(QMainWindow):
         self.xes_panel.btn_bkg_extract.clicked.connect(self.on_xes_background_extract)
         self.xes_panel.btn_save_fit_log.clicked.connect(self.on_xes_save_fit_log)
         self.xes_panel.btn_save_bkg_data.clicked.connect(self.on_xes_save_bkg_data)
-        self.xes_panel.rb_upper.toggled.connect(self.update_status_label)
-        self.xes_panel.rb_lower.toggled.connect(self.update_status_label)
+        self.xes_panel.rb_upper.toggled.connect(self.on_xes_channel_changed)
+        self.xes_panel.rb_lower.toggled.connect(self.on_xes_channel_changed)
 
         # XES background extraction state
         self._xes_wide: Optional[Tuple[np.ndarray, np.ndarray]] = None
@@ -397,6 +399,7 @@ class MainWindow(QMainWindow):
                 pass
         self._xes_avg = None
         self._xes_avg_bkgsub = None
+        self._xes_norm_target = None
         self._xes_avg_norm_factor = None
         self.xes_panel.lbl_norm.setText("Average: no normalisation")
         self._refresh_xes_plot()
@@ -406,6 +409,109 @@ class MainWindow(QMainWindow):
         if getattr(self, "_xes_list_bulk_updating", False):
             return
         self._refresh_xes_plot()
+    def on_xes_channel_changed(self, checked: bool = False):
+        """
+        Definition so that after loading an XES scan with both upper and lower channels, one
+        can easily switch between the channels by using the radio buttons.
+        """
+        if not checked:
+            return
+        # Only proceed if we have something to update
+        if not self._xes_items and not getattr(self, "_xes_wide", None):
+            self.update_status_label()
+            return
+
+        new_channel = "upper" if self.xes_panel.rb_upper.isChecked() else "lower"
+        # Ensure the button disables when the normalised product becomes invalid.
+        self._xes_norm_target = None
+        self._xes_avg_norm_factor = None
+        self._update_xes_buttons()
+        # If items already match the desired channel, do nothing
+        if self._xes_items and all(it.get("channel") == new_channel for it in self._xes_items):
+            self.update_status_label()
+            return
+
+        errors = []
+        # Reload each XES item using the new channel
+        for idx, it in enumerate(self._xes_items):
+            path = it["path"]
+            try:
+                x, y = i20_loader.xes_from_path(path, channel=new_channel, type="XES")
+                order = np.argsort(x)
+                x = np.asarray(x)[order]; y = np.asarray(y)[order]
+                ok = np.isfinite(x) & np.isfinite(y)
+                x, y = x[ok], y[ok]
+                self._xes_items[idx] = {**it, "x": x, "y": y, "channel": new_channel}
+            except Exception as e:
+                errors.append(f"{os.path.basename(path)}: {e}")
+
+        # Reload the optional 'wide' XES scan for the new channel
+        if getattr(self, "_xes_wide", None):
+            _, _, wpath = self._xes_wide
+            try:
+                xw, yw = i20_loader.xes_from_path(wpath, channel=new_channel, type="XES")
+                order = np.argsort(xw)
+                xw = np.asarray(xw)[order]; yw = np.asarray(yw)[order]
+                ok = np.isfinite(xw) & np.isfinite(yw)
+                xw, yw = xw[ok], yw[ok]
+                self._xes_wide = (xw, yw, wpath)
+                try:
+                    self.xes_panel.lbl_wide.setText(f"Wide scan: {os.path.basename(wpath)} ({xw.size} pts)")
+                except Exception:
+                    pass
+            except Exception:
+                # Invalidate wide scan if reload fails
+                self._xes_wide = None
+                try:
+                    self.xes_panel.lbl_wide.setText("Wide scan: none")
+                except Exception:
+                    pass
+
+        # Invalidate derived products (average, bkg-sub, normalisation, background fit)
+        self._xes_avg = None
+        self._xes_avg_bkgsub = None  # ensure consistent naming with the rest of your code
+        self._xes_avg_norm_factor = None
+        self._last_bkg = None
+        self._last_resid = None
+        self._last_bkg_report = ""
+
+        # Remove special rows ('average', 'average_bksub') from the list
+        self._xes_list_bulk_updating = True
+        blk = QSignalBlocker(self.xes_panel.list)
+        try:
+            if hasattr(self.xes_panel, "remove_special"):
+                self.xes_panel.remove_special(AVG_KEY)
+                self.xes_panel.remove_special(BKSUB_KEY)
+            else:
+                rows_to_remove = []
+                for i in range(self.xes_panel.list.count()):
+                    itw = self.xes_panel.list.item(i)
+                    key = itw.data(SPECIAL_ROLE)
+                    if key in (AVG_KEY, BKSUB_KEY):
+                        rows_to_remove.append(i)
+                for r in reversed(rows_to_remove):
+                    self.xes_panel.list.takeItem(r)
+        finally:
+            del blk
+            self._xes_list_bulk_updating = False
+
+        # Reset UI labels and replot
+        try:
+            self.xes_panel.lbl_norm.setText("Average: no normalisation")
+        except Exception:
+            pass
+        self._refresh_xes_plot()
+        self.update_status_label()
+        if hasattr(self, "_update_xes_buttons"):
+            self._update_xes_buttons()
+
+        # Notify on partial failures
+        if errors:
+            try:
+                QMessageBox.warning(self, "XES channel switch",
+                                    "Some scans failed to reload with the new channel:\n" + "\n".join(errors))
+            except Exception:
+                pass
     def on_xes_clear_all(self):
         self._xes_list_bulk_updating = True
         blocker = QSignalBlocker(self.xes_panel.list)
@@ -413,6 +519,7 @@ class MainWindow(QMainWindow):
             self._xes_items.clear()
             self._xes_avg = None
             self._xes_avg_bkgsub = None
+            self._xes_norm_target = None
             self._xes_avg_norm_factor = None
             self.xes_panel.clear_items()
             self.xes_panel.lbl_norm.setText("Average: no normalisation")
@@ -480,6 +587,41 @@ class MainWindow(QMainWindow):
         Yt = np.nanmean(np.vstack(Ys), axis=0)
         ok = np.isfinite(xt) & np.isfinite(Yt)
         return xt[ok], Yt[ok]
+    def on_xes_save_normalised(self):
+        if not self._xes_avg_norm_factor or not self._xes_norm_target:
+            QMessageBox.information(self, "Save normalised", "No normalised data to save.")
+            return
+
+        kind, idx = self._xes_norm_target
+        if kind == "avg":
+            if self._xes_avg is None:
+                QMessageBox.information(self, "Save normalised", "No normalised average available.")
+                return
+            x, y = self._xes_avg
+            default_name = "xes_normalised_avg.csv"
+        else:
+            if not (0 <= idx < len(self._xes_items)):
+                QMessageBox.information(self, "Save normalised", "Normalised scan not available.")
+                return
+            it = self._xes_items[idx]
+            x, y = it["x"], it["y"]
+            base = os.path.basename(it.get("path", "")) or "scan"
+            default_name = f"{os.path.splitext(base)[0]}_normalised.csv"
+
+        path, _ = QFileDialog.getSaveFileName(self, "Save normalised XES", default_name,
+                                            "CSV (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            arr = np.column_stack([x, y])
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write("omega_eV,intensity_normalised\n")
+                np.savetxt(fh, arr, delimiter=",", fmt="%.10g", comments="")
+                # Commented last row with the normalisation factor
+                fh.write(f"# normalisation_factor={self._xes_avg_norm_factor:.10g}\n")
+            self.status.showMessage(f"Saved normalised XES: {path}", 5000)
+        except Exception as e:
+            QMessageBox.critical(self, "Save error", f"Failed to save normalised data:\n{e}")
     def on_xes_save_average(self):
         if self._xes_avg is None:
             QMessageBox.information(self, "Save average", "No averaged spectrum to save.")
@@ -581,6 +723,7 @@ class MainWindow(QMainWindow):
                 self._xes_avg_norm_factor = float(area)
                 self.dataset = DataSet("1D", x=x, y=y_norm, xlabel="ω (eV)", ylabel="Intensity / area", source="")
                 self.xes_panel.lbl_norm.setText(f"Average normalised by area: {area:.6g}")
+                self._xes_norm_target = ("avg", None)
             else:
                 idx = target[1]
                 item = self._xes_items[idx]
@@ -590,6 +733,7 @@ class MainWindow(QMainWindow):
                 self._xes_avg_norm_factor = float(area)
                 self.dataset = DataSet("1D", x=item["x"], y=y_norm, xlabel="ω (eV)", ylabel="Intensity / area", source=item["path"])
                 self.xes_panel.lbl_norm.setText(f"Scan normalised by area: {area:.6g}")
+                self._xes_norm_target = ("single", idx)
 
             # 5) Refresh the overlays/average plot
             self._refresh_xes_plot()
@@ -1058,12 +1202,20 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "XES load error", f"Failed to load/normalise from XES:\n{path}\n\n{e}")
 
-    # ---------------- Generic: Buttons & Toggles ----------------
+        # ---------------- Generic: Buttons & Toggles ----------------
     def _update_xes_buttons(self):
         has_avg = self._xes_avg is not None and len(self._xes_avg[0]) > 0
         self.xes_panel.btn_save_average.setEnabled(has_avg)
-        has_norm = has_avg and bool(self._xes_avg_norm_factor)
-        self.xes_panel.btn_save_avg_norm.setEnabled(has_norm)
+        has_norm_factor = bool(self._xes_avg_norm_factor)
+        # Save Normalised (any target: avg or single)
+        self.xes_panel.btn_save_norm.setEnabled(has_norm_factor and (self._xes_norm_target is not None))
+        # Save Normalised Avg. only when the average exists and was normalised
+        self.xes_panel.btn_save_avg_norm.setEnabled(has_avg and has_norm_factor)
+    # def _update_xes_buttons(self):
+    #     has_avg = self._xes_avg is not None and len(self._xes_avg[0]) > 0
+    #     self.xes_panel.btn_save_average.setEnabled(has_avg)
+    #     has_norm = has_avg and bool(self._xes_avg_norm_factor)
+    #     self.xes_panel.btn_save_avg_norm.setEnabled(has_norm)
 
     # ---------------- Generic saves ----------------
     def on_save_ascii(self):
