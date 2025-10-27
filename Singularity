@@ -16,10 +16,12 @@ From: python:3.12-slim-bookworm
     export PYTHONPATH=/app:$PYTHONPATH
 
 %post
+
+%post
     set -e
     export DEBIAN_FRONTEND=noninteractive
-
     apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
         ca-certificates \
         libglib2.0-0 \
         libx11-6 \
@@ -53,7 +55,13 @@ From: python:3.12-slim-bookworm
         libfreetype6 \
         libpng16-16 \
         libdbus-1-3 \
+        dbus \
     && rm -rf /var/lib/apt/lists/*
+
+    rm -f /etc/machine-id /var/lib/dbus/machine-id
+    mkdir -p /var/lib/dbus
+    dbus-uuidgen > /etc/machine-id
+    ln -s /etc/machine-id /var/lib/dbus/machine-id
 
     python -m venv /opt/venv
     . /opt/venv/bin/activate
@@ -73,5 +81,4 @@ From: python:3.12-slim-bookworm
 
 %test
     . /opt/venv/bin/activate
-    # Force an offscreen platform during test to dodge X/GL requirements:
     QT_QPA_PLATFORM=offscreen python -c "import PySide6; print('PySide6 import OK')"
