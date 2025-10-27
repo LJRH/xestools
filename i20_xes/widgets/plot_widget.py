@@ -159,10 +159,32 @@ class PlotWidget(QWidget):
     # ------------ ROI line/band API ------------
     def set_line_orientation(self, orientation: str):
         assert orientation in ("vertical", "horizontal")
+        # If orientation unchanged, just refresh bands and notify
+        if orientation == self._line_orientation:
+            if len(self._lines) == 0:
+                self._create_initial_line()
+            self._update_bands()
+            self._emit_lines_changed()
+            return
+
+        # Orientation changed: rebuild lines in the new orientation
+        old_n = max(1, len(self._lines))
+        # remove all existing lines
+        for ln in self._lines:
+            try:
+                ln.remove()
+            except Exception:
+                pass
+        self._lines = []
+
         self._line_orientation = orientation
-        if len(self._lines) == 0:
-            self._create_initial_line()
+        # create same number of lines in the new orientation at sensible positions
+        self._create_initial_line()
+        while len(self._lines) < old_n:
+            self._add_line_internal()
+
         self._update_bands()
+        self.canvas.draw_idle()
         self._emit_lines_changed()
 
     def set_bandwidth(self, width: float):
@@ -211,9 +233,13 @@ class PlotWidget(QWidget):
         pos = []
         for ln in self._lines:
             if self._line_orientation == "vertical":
-                pos.append(ln.get_xdata(orig=False)[0])
+                xdata = ln.get_xdata(orig=False)
+                if xdata[0] == xdata[1]:
+                    pos.append(xdata[0])
             else:
-                pos.append(ln.get_ydata(orig=False)[0])
+                ydata = ln.get_ydata(orig=False)
+                if ydata[0] == ydata[1]:
+                    pos.append(ydata[0])
         return pos
 
     def set_line_positions(self, positions: List[float]):
@@ -264,7 +290,6 @@ class PlotWidget(QWidget):
         self._bands.clear()
 
     def _update_bands(self):
-        # Remove previous bands before drawing new ones
         self._remove_bands()
         if len(self._lines) == 0 or self._bandwidth <= 0:
             self.canvas.draw_idle()
@@ -273,10 +298,16 @@ class PlotWidget(QWidget):
         for i, ln in enumerate(self._lines):
             color = _LINE_COLORS[min(i, len(_LINE_COLORS) - 1)]
             if self._line_orientation == "vertical":
-                x0 = ln.get_xdata(orig=False)[0]
+                xdata = ln.get_xdata(orig=False)
+                if xdata[0] != xdata[1]:
+                    continue  # not a vertical line
+                x0 = xdata[0]
                 band = self.ax_img.axvspan(x0 - half, x0 + half, color=color, alpha=_BAND_ALPHA, lw=0)
             else:
-                y0 = ln.get_ydata(orig=False)[0]
+                ydata = ln.get_ydata(orig=False)
+                if ydata[0] != ydata[1]:
+                    continue  # not a horizontal line
+                y0 = ydata[0]
                 band = self.ax_img.axhspan(y0 - half, y0 + half, color=color, alpha=_BAND_ALPHA, lw=0)
             self._bands.append(band)
         self.canvas.draw_idle()

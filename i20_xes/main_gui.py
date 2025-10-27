@@ -304,21 +304,33 @@ class MainWindow(QMainWindow):
             self.plot.autoscale_current()
         except Exception:
             pass
-    def on_extraction_changed(self):
-        # If user selects Constant Transfer while in Incident mode, switch modes
+    def on_extraction_changed(self, checked: bool):
+        # Only react when a radio becomes checked; ignore the False uncheck event
+        if not checked:
+            return
+
+        # Prevent illegal combinations by switching modes when needed
+        # 1) If user selects Constant Transfer while in Incident mode -> switch to Transfer
         if self.rxes_panel.rb_extr_transfer.isChecked() and self.rxes_panel.rb_mode_incident.isChecked():
             self.rxes_panel.rb_mode_transfer.setChecked(True)
             return
+
+        # 2) If user selects Constant Emission while in Transfer mode -> switch to Incident
+        if self.rxes_panel.rb_extr_emission.isChecked() and self.rxes_panel.rb_mode_transfer.isChecked():
+            self.rxes_panel.rb_mode_incident.setChecked(True)
+            return
+
+        # Update line orientation only (don’t autoscale the image)
         try:
             self.plot.set_signal_suppressed(True)
             self.set_line_orientation_for_current_mode()
-            self.plot.set_signal_suppressed(False)
-        except Exception:
-            pass
-        try:
-            self.plot.autoscale_current()
-        except Exception:
-            pass
+        finally:
+            try:
+                self.plot.set_signal_suppressed(False)
+            except Exception:
+                pass
+
+        # Recompute profiles for current extraction
         self.update_profiles()
     def set_line_orientation_for_current_mode(self):
         incident_mode = self.rxes_panel.rb_mode_incident.isChecked()
@@ -1124,9 +1136,13 @@ class MainWindow(QMainWindow):
             line_vals = self.plot.get_line_positions()
         except Exception:
             pass
+
         if len(line_vals) == 0:
+            # No ROI lines: leave the image and its limits intact
+            self._last_profiles = []
             try:
-                self.plot.plot_profiles("", [])
+                if hasattr(self.plot, "clear_profiles"):
+                    self.plot.clear_profiles()
             except Exception:
                 pass
             self.update_ui_state()
