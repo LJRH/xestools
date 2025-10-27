@@ -36,8 +36,6 @@ def is_probably_detector_hdf(path: str) -> bool:
 
 
 # ----------------------------- Axes tools -----------------------------
-
-
 def reduce_axes_for(
     emission_2d: np.ndarray,
     bragg_offset_2d: Optional[np.ndarray],
@@ -79,10 +77,7 @@ def reduce_axes_for(
 
     return y_omega.ravel(), x_Omega.ravel(), transposed
 
-
 # ----------------------------- RXES loader -----------------------------
-
-
 def add_scan_from_nxs(scan: Scan, path: str, scan_number: Optional[Any] = None) -> Any:
     """
     Load an I20 RXES scan (.nxs) and append into the Scan container.
@@ -149,8 +144,6 @@ def add_scan_from_nxs(scan: Scan, path: str, scan_number: Optional[Any] = None) 
 
 
 # ----------------------------- XES loaders (1D) -----------------------------
-
-
 def _reduce_to_1d(energy: np.ndarray, intensity: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     Reduce possibly 2D (mesh-like) energy and intensity to a clean 1D curve Y(X).
@@ -184,8 +177,6 @@ def _reduce_to_1d(energy: np.ndarray, intensity: np.ndarray) -> Tuple[np.ndarray
     yi = yi[order]
     ok = np.isfinite(x) & np.isfinite(yi)
     return x[ok], yi[ok]
-
-
 def xes_from_nxs(
     path: str,
     channel: str = "upper",
@@ -232,8 +223,6 @@ def xes_from_nxs(
             except Exception:
                 inten = fh[f"/entry1/instrument/{det}/{roi}"][...]
             return _reduce_to_1d(omega, inten)
-
-
 def xes_from_ascii(path: str) -> Tuple[np.ndarray, np.ndarray]:
     """
     ASCII two-column XES: X=energy (ω or Ω), Y=intensity.
@@ -246,8 +235,6 @@ def xes_from_ascii(path: str) -> Tuple[np.ndarray, np.ndarray]:
     y = data[:, 1]
     ok = np.isfinite(x) & np.isfinite(y)
     return x[ok], y[ok]
-
-
 def xes_from_path(
     path: str,
     channel: str = "upper",
