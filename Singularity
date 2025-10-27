@@ -16,8 +16,6 @@ From: python:3.12-slim-bookworm
     export PYTHONPATH=/app:$PYTHONPATH
 
 %post
-
-%post
     set -e
     export DEBIAN_FRONTEND=noninteractive
     apt-get update && apt-get install -y --no-install-recommends \
