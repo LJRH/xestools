@@ -40,6 +40,7 @@ class XESPanel(QGroupBox):
         self.btn_save_norm = QPushButton("Save Normalised")
         self.btn_save_average = QPushButton("Save Average")
         self.btn_save_avg_norm = QPushButton("Save Normalised Avg.")
+        self.btn_save_norm.setEnabled(False) # initially set these buttons as disabled, until data becomes available.
         self.btn_save_average.setEnabled(False)
         self.btn_save_avg_norm.setEnabled(False)
         row2.addWidget(self.btn_average)

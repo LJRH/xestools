@@ -15,8 +15,6 @@ from .scan import Scan
 
 
 # ----------------------------- Heuristics -----------------------------
-
-
 def is_probably_detector_hdf(path: str) -> bool:
     """
     Heuristic to detect a raw detector HDF (not the RXES scan .nxs).
@@ -34,12 +32,8 @@ def is_probably_detector_hdf(path: str) -> bool:
     except Exception:
         return False
 
-
 # ----------------------------- Axes tools -----------------------------
-def reduce_axes_for(
-    emission_2d: np.ndarray,
-    bragg_offset_2d: Optional[np.ndarray],
-) -> Tuple[np.ndarray, np.ndarray, bool]:
+def reduce_axes_for(emission_2d: np.ndarray,bragg_offset_2d: Optional[np.ndarray],) -> Tuple[np.ndarray, np.ndarray, bool]:
     """
     Build 1D axes from 2D meshes so that:
       - y (rows) is emission energy ω
@@ -142,41 +136,7 @@ def add_scan_from_nxs(scan: Scan, path: str, scan_number: Optional[Any] = None) 
     )
     return scan_number
 
-
 # ----------------------------- XES loaders (1D) -----------------------------
-def _reduce_to_1d(energy: np.ndarray, intensity: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Reduce possibly 2D (mesh-like) energy and intensity to a clean 1D curve Y(X).
-    Heuristic: detect the varying axis of the energy mesh and sum the intensity
-    along the orthogonal axis.
-    """
-    e = np.asarray(energy, dtype=float)
-    y = np.asarray(intensity, dtype=float)
-
-    if e.ndim == 1 and y.ndim == 1:
-        x = e
-        yi = y
-    elif e.ndim == 2 and y.ndim == 2 and e.shape == y.shape:
-        row_var = float(np.nanmean(np.std(e, axis=1)))
-        col_var = float(np.nanmean(np.std(e, axis=0)))
-        if row_var < col_var:
-            # energy varies down rows -> collapse rows
-            x = np.nanmedian(e, axis=0)
-            yi = np.nansum(y, axis=0)
-        else:
-            # energy varies across columns -> collapse columns
-            x = np.nanmedian(e, axis=1)
-            yi = np.nansum(y, axis=1)
-    else:
-        # Fallback: flatten
-        x = e.ravel()
-        yi = y.ravel()
-
-    order = np.argsort(x)
-    x = x[order]
-    yi = yi[order]
-    ok = np.isfinite(x) & np.isfinite(yi)
-    return x[ok], yi[ok]
 def xes_from_nxs(
     path: str,
     channel: str = "upper",
@@ -235,6 +195,21 @@ def xes_from_ascii(path: str) -> Tuple[np.ndarray, np.ndarray]:
     y = data[:, 1]
     ok = np.isfinite(x) & np.isfinite(y)
     return x[ok], y[ok]
+def xes_from_scan_entry(entry: dict, channel: str = "upper") -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Build a 1D XES curve from a Scan entry produced by add_scan_from_nxs.
+    Prefers the channel-specific emission mesh; falls back to Ω (braggOffset) if needed
+    to produce a 1D projection. Uses _reduce_to_1d for robust 1D reduction.
+    """
+    use_upper = channel.lower().startswith("u")
+    energy = entry.get("energy_upper_2d") if use_upper else entry.get("energy_lower_2d")
+    inten = entry.get("intensity_upper") if use_upper else entry.get("intensity_lower")
+    if energy is None:
+        # RXES-style projection if only Ω is available or emission missing
+        energy = entry.get("braggOffset_2d")
+    if energy is None or inten is None:
+        return np.array([]), np.array([])
+    return _reduce_to_1d(energy, inten)
 def xes_from_path(
     path: str,
     channel: str = "upper",
@@ -250,3 +225,49 @@ def xes_from_path(
     if ext == ".nxs":
         return xes_from_nxs(path, channel=channel, type=type)
     return xes_from_ascii(path)
+
+# ----------------------------- Helper Functions -----------------------------
+def _reduce_to_1d(energy: np.ndarray, intensity: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Reduce possibly 2D (mesh-like) energy and intensity to a clean 1D curve Y(X).
+    Heuristic: detect the varying axis of the energy mesh and sum the intensity
+    along the orthogonal axis.
+    """
+    e = np.asarray(energy, dtype=float)
+    y = np.asarray(intensity, dtype=float)
+
+    if e.ndim == 1 and y.ndim == 1:
+        x = e
+        yi = y
+    elif e.ndim == 2 and y.ndim == 2 and e.shape == y.shape:
+        row_var = float(np.nanmean(np.std(e, axis=1)))
+        col_var = float(np.nanmean(np.std(e, axis=0)))
+        if row_var < col_var:
+            # energy varies down rows -> collapse rows
+            x = np.nanmedian(e, axis=0)
+            yi = np.nansum(y, axis=0)
+        else:
+            # energy varies across columns -> collapse columns
+            x = np.nanmedian(e, axis=1)
+            yi = np.nansum(y, axis=1)
+    else:
+        # Fallback: flatten
+        x = e.ravel()
+        yi = y.ravel()
+
+    order = np.argsort(x)
+    x = x[order]
+    yi = yi[order]
+    ok = np.isfinite(x) & np.isfinite(yi)
+    return x[ok], yi[ok]
+def available_channels(entry: dict) -> list[str]:
+    """
+    Return a list of available detector channels in this scan entry: ['upper'], ['lower'] or ['upper','lower'].
+    A channel is available if both its emission-energy mesh and its intensity exist.
+    """
+    ch = []
+    if entry.get("energy_upper_2d") is not None and entry.get("intensity_upper") is not None:
+        ch.append("upper")
+    if entry.get("energy_lower_2d") is not None and entry.get("intensity_lower") is not None:
+        ch.append("lower")
+    return ch

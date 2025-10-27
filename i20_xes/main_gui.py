@@ -211,15 +211,15 @@ class MainWindow(QMainWindow):
         else:
             self.on_xes_load_scans()
     def _load_rxes_scan(self):
-        filters = ["NeXus scans (*.nxs)", "All files (*)"]
+        filters = ["NeXus scans (*.nxs *.h5 *.hdf *.hdf5)", "All files (*)"]
         path, _ = QFileDialog.getOpenFileName(self, "Load RXES scan", "", ";;".join(filters))
         if not path:
             return
         try:
             ext = os.path.splitext(path)[1].lower()
-            if ext in (".h5", ".hdf", ".hdf5") and i20_loader.is_probably_detector_hdf(path):
+            if ext in (".nxs", ".h5", ".hdf", ".hdf5") and i20_loader.is_probably_detector_hdf(path):
                 QMessageBox.warning(self, "Detector HDF selected",
-                                    "This looks like a raw detector file. Please pick the scan .nxs.")
+                                    "This looks like a raw detector file. Please pick the scan .nxs/.h5.")
                 return
             scan_number = i20_loader.add_scan_from_nxs(self.scan, path)
             self.current_scan_number = scan_number
@@ -345,44 +345,97 @@ class MainWindow(QMainWindow):
     # ---------------- XES: multi-scan workflow - Load, Plot and Average ----------------
     def on_xes_load_scans(self):
         filters = [
-            "XES spectrum (*.nxs *.txt *.dat *.csv)",
-            "NeXus (*.nxs)",
+            "XES spectrum (*.nxs *.h5 *.hdf *.hdf5 *.txt *.dat *.csv)",
+            "NeXus/HDF5 (*.nxs *.h5 *.hdf *.hdf5)",
             "ASCII (*.txt *.dat *.csv)",
             "All files (*)"
         ]
         paths, _ = QFileDialog.getOpenFileNames(self, "Load XES scans", "", ";;".join(filters))
         if not paths:
             return
-        use_upper = self.xes_panel.rb_upper.isChecked()
-        channel = "upper" if use_upper else "lower"
+
+        ui_channel = "upper" if self.xes_panel.rb_upper.isChecked() else "lower"
+
         added = 0
         self._xes_list_bulk_updating = True
         blocker = QSignalBlocker(self.xes_panel.list)
         try:
             for path in paths:
                 try:
-                    x, y = i20_loader.xes_from_path(path, channel=channel, type="XES")
-                    order = np.argsort(x)
-                    x = np.asarray(x)[order]; y = np.asarray(y)[order]
-                    ok = np.isfinite(x) & np.isfinite(y)
-                    x, y = x[ok], y[ok]
-                    if x.size == 0:
-                        raise ValueError("Empty/invalid data after sanitizing")
-                    self._xes_items.append({
-                        "path": path, "channel": channel, "x": x, "y": y, "label": os.path.basename(path)
-                    })
-                    self.xes_panel.add_item(os.path.basename(path), checked=True)
+                    ext = os.path.splitext(path)[1].lower()
+                    if ext in (".nxs", ".h5", ".hdf", ".hdf5"):
+                        # Skip raw detector files
+                        if i20_loader.is_probably_detector_hdf(path):
+                            QMessageBox.warning(self, "Load XES", f"Skipped detector HDF (not a scan): {path}")
+                            continue
+                        # Load into Scan once
+                        sn = i20_loader.add_scan_from_nxs(self.scan, path)
+                        entry = self.scan.get(sn, {})
+                        avail = i20_loader.available_channels(entry)
+                        if not avail:
+                            raise ValueError("No usable detector channel in this file (missing emission/intensity).")
+
+                        # Choose initial channel: UI choice if available, else the other
+                        if ui_channel in avail:
+                            ch0 = ui_channel
+                        else:
+                            ch0 = avail[0]
+
+                        x, y = i20_loader.xes_from_scan_entry(entry, channel=ch0)
+                        order = np.argsort(x)
+                        x = np.asarray(x)[order]; y = np.asarray(y)[order]
+                        ok = np.isfinite(x) & np.isfinite(y)
+                        x, y = x[ok], y[ok]
+                        if x.size == 0:
+                            raise ValueError("Empty/invalid data after sanitizing")
+
+                        item = {
+                            "path": path,
+                            "kind": "nxs",
+                            "scan_number": sn,
+                            "available_channels": avail,    # e.g. ['upper'] or ['upper','lower']
+                            "channel": ch0,                 # currently shown channel
+                            "x": x,
+                            "y": y,
+                            "label": os.path.basename(path),
+                        }
+                    else:
+                        # ASCII: load once; channel notion not applicable
+                        x, y = i20_loader.xes_from_ascii(path)
+                        order = np.argsort(x)
+                        x = np.asarray(x)[order]; y = np.asarray(y)[order]
+                        ok = np.isfinite(x) & np.isfinite(y)
+                        x, y = x[ok], y[ok]
+                        if x.size == 0:
+                            raise ValueError("Empty/invalid data after sanitizing")
+
+                        item = {
+                            "path": path,
+                            "kind": "ascii",
+                            "available_channels": [],       # none; not channel-switchable
+                            "channel": None,
+                            "x": x,
+                            "y": y,
+                            "label": os.path.basename(path),
+                        }
+
+                    self._xes_items.append(item)
+                    self.xes_panel.add_item(item["label"], checked=True)
                     added += 1
                 except Exception as e:
                     QMessageBox.warning(self, "Load XES", f"Failed to load {path}:\n{e}")
         finally:
             del blocker
             self._xes_list_bulk_updating = False
+
+        self._update_xes_channel_controls() # Grey out unavailable channel buttons.
         if added:
+            # Reset derived products
             self._xes_avg = None
             self._xes_avg_bkgsub = None
             self._xes_avg_norm_factor = None
             self.xes_panel.lbl_norm.setText("Average: no normalisation")
+            # Refresh
             self._refresh_xes_plot()
             self.update_status_label()
             if hasattr(self, "_update_xes_buttons"):
@@ -410,108 +463,67 @@ class MainWindow(QMainWindow):
             return
         self._refresh_xes_plot()
     def on_xes_channel_changed(self, checked: bool = False):
-        """
-        Definition so that after loading an XES scan with both upper and lower channels, one
-        can easily switch between the channels by using the radio buttons.
-        """
         if not checked:
             return
-        # Only proceed if we have something to update
         if not self._xes_items and not getattr(self, "_xes_wide", None):
             self.update_status_label()
             return
 
         new_channel = "upper" if self.xes_panel.rb_upper.isChecked() else "lower"
-        # Ensure the button disables when the normalised product becomes invalid.
-        self._xes_norm_target = None
-        self._xes_avg_norm_factor = None
-        self._update_xes_buttons()
-        # If items already match the desired channel, do nothing
-        if self._xes_items and all(it.get("channel") == new_channel for it in self._xes_items):
-            self.update_status_label()
-            return
-
+        changed = False
         errors = []
-        # Reload each XES item using the new channel
+
         for idx, it in enumerate(self._xes_items):
-            path = it["path"]
+            if it.get("kind") != "nxs":
+                continue  # ASCII: nothing to switch
+            avail = it.get("available_channels", [])
+            if new_channel not in avail:
+                continue  # this file doesn't have that channel
             try:
-                x, y = i20_loader.xes_from_path(path, channel=new_channel, type="XES")
+                entry = self.scan.get(it["scan_number"], None)
+                if entry is None:
+                    raise RuntimeError("Scan entry missing")
+                x, y = i20_loader.xes_from_scan_entry(entry, channel=new_channel)
                 order = np.argsort(x)
                 x = np.asarray(x)[order]; y = np.asarray(y)[order]
                 ok = np.isfinite(x) & np.isfinite(y)
                 x, y = x[ok], y[ok]
                 self._xes_items[idx] = {**it, "x": x, "y": y, "channel": new_channel}
+                changed = True
             except Exception as e:
-                errors.append(f"{os.path.basename(path)}: {e}")
+                errors.append(f"{os.path.basename(it.get('path',''))}: {e}")
 
-        # Reload the optional 'wide' XES scan for the new channel
-        if getattr(self, "_xes_wide", None):
-            _, _, wpath = self._xes_wide
-            try:
-                xw, yw = i20_loader.xes_from_path(wpath, channel=new_channel, type="XES")
-                order = np.argsort(xw)
-                xw = np.asarray(xw)[order]; yw = np.asarray(yw)[order]
-                ok = np.isfinite(xw) & np.isfinite(yw)
-                xw, yw = xw[ok], yw[ok]
-                self._xes_wide = (xw, yw, wpath)
-                try:
-                    self.xes_panel.lbl_wide.setText(f"Wide scan: {os.path.basename(wpath)} ({xw.size} pts)")
-                except Exception:
-                    pass
-            except Exception:
-                # Invalidate wide scan if reload fails
-                self._xes_wide = None
-                try:
-                    self.xes_panel.lbl_wide.setText("Wide scan: none")
-                except Exception:
-                    pass
-
-        # Invalidate derived products (average, bkg-sub, normalisation, background fit)
-        self._xes_avg = None
-        self._xes_avg_bkgsub = None  # ensure consistent naming with the rest of your code
-        self._xes_avg_norm_factor = None
-        self._last_bkg = None
-        self._last_resid = None
-        self._last_bkg_report = ""
-
-        # Remove special rows ('average', 'average_bksub') from the list
-        self._xes_list_bulk_updating = True
-        blk = QSignalBlocker(self.xes_panel.list)
-        try:
-            if hasattr(self.xes_panel, "remove_special"):
-                self.xes_panel.remove_special(AVG_KEY)
-                self.xes_panel.remove_special(BKSUB_KEY)
-            else:
-                rows_to_remove = []
-                for i in range(self.xes_panel.list.count()):
-                    itw = self.xes_panel.list.item(i)
-                    key = itw.data(SPECIAL_ROLE)
-                    if key in (AVG_KEY, BKSUB_KEY):
-                        rows_to_remove.append(i)
-                for r in reversed(rows_to_remove):
-                    self.xes_panel.list.takeItem(r)
-        finally:
-            del blk
-            self._xes_list_bulk_updating = False
-
-        # Reset UI labels and replot
-        try:
+        if changed:
+            # Invalidate derived products
+            self._xes_avg = None
+            self._xes_avg_bkgsub = None
+            self._xes_avg_norm_factor = None
+            self._last_bkg = None
+            self._last_resid = None
+            self._last_bkg_report = ""
             self.xes_panel.lbl_norm.setText("Average: no normalisation")
-        except Exception:
-            pass
-        self._refresh_xes_plot()
-        self.update_status_label()
-        if hasattr(self, "_update_xes_buttons"):
-            self._update_xes_buttons()
+            # Remove specials if your panel supports it
+            self._xes_list_bulk_updating = True
+            blk = QSignalBlocker(self.xes_panel.list)
+            try:
+                if hasattr(self.xes_panel, "remove_special"):
+                    self.xes_panel.remove_special(AVG_KEY)
+                    self.xes_panel.remove_special(BKSUB_KEY)
+            finally:
+                del blk
+                self._xes_list_bulk_updating = False
 
-        # Notify on partial failures
+            self._refresh_xes_plot()
+            self.update_status_label()
+            if hasattr(self, "_update_xes_buttons"):
+                self._update_xes_buttons()
+                self._update_xes_channel_controls()
         if errors:
             try:
                 QMessageBox.warning(self, "XES channel switch",
-                                    "Some scans failed to reload with the new channel:\n" + "\n".join(errors))
+                                    "Some scans could not switch channel:\n" + "\n".join(errors))
             except Exception:
-                pass
+                pass  
     def on_xes_clear_all(self):
         self._xes_list_bulk_updating = True
         blocker = QSignalBlocker(self.xes_panel.list)
@@ -529,6 +541,7 @@ class MainWindow(QMainWindow):
         self._refresh_xes_plot()
         self.update_status_label()
         self._update_xes_buttons()
+        self._update_xes_channel_controls()
     def on_xes_average_selected(self):
         idxs = self.xes_panel.checked_indices()
         idxs = [i for i in idxs if 0 <= i < len(self._xes_items)]
@@ -1211,6 +1224,41 @@ class MainWindow(QMainWindow):
         self.xes_panel.btn_save_norm.setEnabled(has_norm_factor and (self._xes_norm_target is not None))
         # Save Normalised Avg. only when the average exists and was normalised
         self.xes_panel.btn_save_avg_norm.setEnabled(has_avg and has_norm_factor)
+    def _update_xes_channel_controls(self):
+        """
+        Inspect loaded XES items and update the channel radios:
+        - If only 'upper' is available across all NeXus items, select Upper and disable Lower.
+        - If only 'lower' is available, select Lower and disable Upper.
+        - If both (or none, e.g. only ASCII items), enable both and leave selection as-is.
+        """
+        # Consider only NeXus items (ASCII has no channel concept)
+        has_upper = any(
+            it.get("kind") == "nxs" and "upper" in it.get("available_channels", [])
+            for it in self._xes_items
+        )
+        has_lower = any(
+            it.get("kind") == "nxs" and "lower" in it.get("available_channels", [])
+            for it in self._xes_items
+        )
+
+        # Default: enable both (e.g. only ASCII loaded or both channels present)
+        enable_upper = True
+        enable_lower = True
+
+        # If exactly one channel is available across all NeXus items, lock to it
+        if has_upper and not has_lower:
+            enable_lower = False
+            if not self.xes_panel.rb_upper.isChecked():
+                # Will trigger on_xes_channel_changed(checked=True)
+                self.xes_panel.rb_upper.setChecked(True)
+        elif has_lower and not has_upper:
+            enable_upper = False
+            if not self.xes_panel.rb_lower.isChecked():
+                self.xes_panel.rb_lower.setChecked(True)
+
+        # Apply enable states (greys out unavailable channel)
+        self.xes_panel.rb_upper.setEnabled(enable_upper)
+        self.xes_panel.rb_lower.setEnabled(enable_lower)
     # def _update_xes_buttons(self):
     #     has_avg = self._xes_avg is not None and len(self._xes_avg[0]) > 0
     #     self.xes_panel.btn_save_average.setEnabled(has_avg)
