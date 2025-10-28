@@ -3,8 +3,7 @@
 **Last Updated**: October 28, 2025 (Session 2)  
 **Repository**: git@github.com:LJRH/i20xes.git  
 **Current Branch**: main (will push to dev-i20xes)  
-**Latest Commit**: ad1ec79 "Fix XES background extraction segfault issues"  
-**Working Directory**: `/mnt/media_hermes/Work/i20xes`
+**Latest Commit**: ad1ec79 "Fix XES background extraction segfault issues"
 
 ---
 
@@ -71,7 +70,7 @@ if nf and np.isfinite(nf) and nf > 0:
 5. Channel mismatch between RXES scan and normalisation XES
 
 **Investigation Steps**:
-1. Launch GUI: `cd /mnt/media_hermes/Work/i20xes && python3 main.py`
+1. Launch GUI: `python3 main.py`
 2. Load RXES test file: `i20_xes/data/rxes/279496_1.nxs`
 3. Select Upper/Lower channel
 4. Click "Load XES..." button
@@ -402,7 +401,6 @@ Add button to `BackgroundDialog.__init__()` method, likely near existing control
 ### Manual Testing Workflow
 ```bash
 # Launch application
-cd /mnt/media_hermes/Work/i20xes
 python3 main.py
 
 # Test RXES normalisation
@@ -478,7 +476,6 @@ gdb -ex run --args python3 main.py
 ### Immediate Actions
 1. **Pull latest code**: 
    ```bash
-   cd /mnt/media_hermes/Work/i20xes
    git pull origin main
    ```
 
