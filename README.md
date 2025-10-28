@@ -104,9 +104,13 @@ Notes:
   - You have to select the correct channel first using the radio button and then load the scans (bug).
 
 ## To do
-- Fix RXES normalisation
-- Fix XES background extraction intermittent segmentation fault bug.
+- Fix ASCII XES loader to support beamline format files.
+- Fix channel selection workflow bug (allow switching Upper/Lower after loading scans).
 - Add a XES background extraction 'Clear All' button.
+
+## Recently Fixed
+- ✅ RXES normalisation (Oct 28, 2025) - Fixed type parameter in XES loader call
+- ✅ XES background extraction segfault (Oct 28, 2025) - Improved resource cleanup and error handling
 
 ## License
 

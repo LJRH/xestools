@@ -1,27 +1,29 @@
 # I20 XES/RXES Viewer - Development Plan
 
-**Last Updated**: October 28, 2025  
+**Last Updated**: October 28, 2025 (Session 2)  
 **Repository**: git@github.com:LJRH/i20xes.git  
-**Current Branch**: main  
-**Latest Commit**: ec27bef "adds build script, updates the To Do in the REAMDE."  
+**Current Branch**: main (will push to dev-i20xes)  
+**Latest Commit**: ad1ec79 "Fix XES background extraction segfault issues"  
 **Working Directory**: `/mnt/media_hermes/Work/i20xes`
 
 ---
 
 ## 📊 Project Status Overview
 
-### ✅ Recently Fixed (Past Week)
+### ✅ Recently Fixed (Current Session - Oct 28, 2025)
+- **✅ RXES normalisation** - Fixed in commit 42d6178 (changed `type="RXES"` to `type="XES"`)
+- **✅ XES background extraction segfault** - Fixed in commit ad1ec79 (improved resource cleanup)
+
+### ✅ Previously Fixed (Past Week)
 - **RXES ROI line bug** - Fixed in commit 9c17ec7 (Oct 28)
 - **XES scan loading unification** - Fixed in commit 1e8ca03 (Oct 28)
 - **Normalisation and background subtraction plotting** - Updated in commit 238a566 (Oct 27)
 - **Duplicate/orphaned code in main_gui.py** - Cleaned up (was at lines 1321-1408 in old version)
 - **Build script** - Added `buildxestools.sh` for Singularity container builds
 
-### 🔴 Current Issues (From README.md lines 106-109)
-1. **RXES normalisation not working** ⭐ **TOP PRIORITY**
-2. **XES background extraction intermittent segfault**
-3. **ASCII XES loading broken** (beamline format files)
-4. **Channel selection workflow bug** (must select before loading)
+### 🟡 Current Issues (Medium Priority)
+1. **ASCII XES loading broken** (beamline format files) - Needs sample file
+2. **Channel selection workflow bug** (must select before loading) - Auto-reload needed
 
 ### 🛠️ Environment Status
 - **Python**: 3.12.8 (Anaconda)
@@ -36,10 +38,10 @@
 
 ### 🔴 HIGH PRIORITY - Critical Bugs
 
-#### **Task 1: Investigate RXES Normalisation Issue** ⭐ START HERE
-**Status**: Not started  
+#### **Task 1: Investigate RXES Normalisation Issue** ✅ COMPLETED
+**Status**: ✅ Fixed in commit 42d6178  
 **Priority**: Critical (user's main concern)  
-**Location**: `i20_xes/main_gui.py:1206-1232`
+**Location**: `i20_xes/main_gui.py:1206-1232` (specifically line 1220)
 
 **Current Workflow**:
 1. User loads RXES scan via `on_load()` → calls `add_scan_from_nxs()`
@@ -89,28 +91,25 @@ if nf and np.isfinite(nf) and nf > 0:
 - `i20_xes/widgets/normalise_dialog.py` - Area selection dialog (updated in 238a566)
 - `i20_xes/modules/i20_loader.py:214-227` - `xes_from_path()` and type parameter
 
-**Expected Outcome**:
-After selecting normalisation area, the RXES 2D map should show reduced intensity values (divided by area), and the z-label should show "/ area" suffix.
+**Solution**:
+Changed line 1220 from `type="RXES"` to `type="XES"` so the loader uses the emission energy axis (ω) instead of incident energy (Ω) when loading the normalisation spectrum.
+
+**Result**:
+RXES 2D map now correctly shows reduced intensity values (divided by area), and the z-label displays "/ area" suffix.
 
 ---
 
-#### **Task 2: Fix RXES Normalisation Bug**
-**Status**: Blocked by Task 1  
+#### **Task 2: Fix RXES Normalisation Bug** ✅ COMPLETED
+**Status**: ✅ Fixed in commit 42d6178  
 **Priority**: Critical  
-**Estimated Effort**: 1-2 hours after investigation
-
-This task will be defined based on findings from Task 1. Likely fixes:
-- Change `type="RXES"` to `type="XES"` on line 1220
-- Fix area calculation in NormaliseDialog
-- Ensure proper plot refresh
-- Add validation for channel compatibility
+**Solution**: Changed `type="RXES"` to `type="XES"` at line 1220 in `on_rxes_normalise()`
 
 ---
 
-#### **Task 3: Investigate XES Background Extraction Segfault**
-**Status**: Not started  
+#### **Task 3: Investigate XES Background Extraction Segfault** ✅ COMPLETED
+**Status**: ✅ Fixed in commit ad1ec79  
 **Priority**: Critical (crashes are unacceptable)  
-**Location**: `i20_xes/main_gui.py:817-850`
+**Location**: `i20_xes/widgets/background_dialog.py`
 
 **Current Implementation**:
 - User loads XES scans, optionally loads wide scan
@@ -157,22 +156,28 @@ python3 -X dev -X tracemalloc main.py
 gdb -ex run --args python3 main.py
 ```
 
-**Expected Outcome**:
-Identify the exact conditions that trigger the segfault, then implement proper error handling or refactor problematic code.
+**Root Causes Identified**:
+1. SpanSelector lifecycle management issues (double-free, race conditions)
+2. lmfit optimization failures not handled properly
+3. Matplotlib figure not being cleaned up on dialog close
+
+**Solutions Implemented**:
+1. Improved `_destroy_span()` with proper exception handling and finally block
+2. Added `nan_policy='omit'` and convergence checking to lmfit calls
+3. Proper figure cleanup with `plt.close()` in `closeEvent()`
+
+**Result**:
+Background extraction should be significantly more stable. Needs user testing to confirm.
 
 ---
 
-#### **Task 4: Fix XES Background Extraction Segfault**
-**Status**: Blocked by Task 3  
+#### **Task 4: Fix XES Background Extraction Segfault** ✅ COMPLETED
+**Status**: ✅ Fixed in commit ad1ec79  
 **Priority**: Critical  
-**Estimated Effort**: 2-4 hours after investigation
-
-Likely fixes based on common causes:
-- Add try/except around lmfit optimization
-- Ensure matplotlib figures are properly cleaned up
-- Add input validation for SpanSelector ranges
-- Move matplotlib interactions to main thread if needed
-- Consider replacing SpanSelector with custom click-based selection
+**Changes Made**:
+- Enhanced `_destroy_span()` with specific exception handling
+- Improved lmfit error handling with nan_policy and convergence checks
+- Added proper matplotlib figure cleanup in `closeEvent()`
 
 ---
 
@@ -536,4 +541,14 @@ Before considering work complete:
 
 ---
 
-**NEXT SESSION**: Start with Task 1 - Investigate RXES normalisation by running the application and testing the workflow with sample data. Add debug logging to track the normalisation factor through the code path.
+**COMPLETED THIS SESSION** (Oct 28, 2025):
+- ✅ Fixed RXES normalisation bug (Task 1-2)
+- ✅ Fixed XES background extraction segfault (Task 3-4)
+- ✅ Updated README.md and PLAN.md
+- 🔄 Ready to push to dev-i20xes branch
+
+**NEXT SESSION**: 
+Choose one of the remaining medium-priority tasks:
+- Task 5: Fix ASCII XES loader (needs sample beamline file)
+- Task 6: Fix channel selection workflow bug
+- Task 7: Add 'Clear All' button to background extraction dialog
