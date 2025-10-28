@@ -1217,7 +1217,7 @@ class MainWindow(QMainWindow):
         try:
             use_upper = self.rxes_panel.rb_upper.isChecked()
             channel = "upper" if use_upper else "lower"
-            x, y = i20_loader.xes_from_path(path, channel=channel, type="RXES")
+            x, y = i20_loader.xes_from_path(path, channel=channel, type="XES")
             dlg = NormaliseDialog(x, y, parent=self, title=f"XES ({'Upper' if use_upper else 'Lower'})")
             if dlg.exec() != QDialog.Accepted:
                 return
