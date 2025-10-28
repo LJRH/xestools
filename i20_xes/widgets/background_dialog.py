@@ -209,12 +209,20 @@ class BackgroundDialog(QtWidgets.QDialog):
             )
 
     def _destroy_span(self):
+        """Safely disconnect and destroy the SpanSelector to prevent segfaults."""
         if self._span is not None:
             try:
                 self._span.disconnect_events()
-            except Exception:
+            except (AttributeError, RuntimeError):
+                # SpanSelector may already be disconnected or destroyed
                 pass
-            self._span = None
+            except Exception as e:
+                # Catch any other matplotlib-related errors
+                import logging
+                logging.warning(f"Error destroying SpanSelector: {e}")
+            finally:
+                # Always set to None to prevent double-free
+                self._span = None
 
     # ---------- plotting ----------
     def _autoscale_from_data(self):
@@ -354,10 +362,20 @@ class BackgroundDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.information(self, "No model",
                                               "Select at least one model term (Linear and/or Pearson VII).")
             return
+        # Perform fit with comprehensive error handling to prevent segfaults
         try:
-            result = model.fit(yb, params, x=xb)
+            result = model.fit(yb, params, x=xb, nan_policy='omit', max_nfev=2000)
+            if not result.success:
+                QtWidgets.QMessageBox.warning(self, "Fit did not converge", 
+                                              f"Optimization did not converge. Try adjusting parameters or excluded regions.\n\n{result.message}")
+                return
+        except (ValueError, TypeError, RuntimeError) as e:
+            QtWidgets.QMessageBox.critical(self, "Fit error", 
+                                          f"lmfit failed with error:\n{type(e).__name__}: {e}\n\nTry adjusting fit parameters or excluded regions.")
+            return
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Fit error", f"lmfit failed:\n{e}")
+            QtWidgets.QMessageBox.critical(self, "Unexpected error", 
+                                          f"An unexpected error occurred during fitting:\n{type(e).__name__}: {e}")
             return
 
         ok_full = np.isfinite(x) & np.isfinite(y)
@@ -390,13 +408,30 @@ class BackgroundDialog(QtWidgets.QDialog):
 
     # ---------- teardown ----------
     def closeEvent(self, event):
+        """Clean up matplotlib resources to prevent memory leaks and segfaults."""
+        # Destroy span selector first
         self._destroy_span()
+        
+        # Disconnect all matplotlib event callbacks
         for cid in self._cids:
             try:
                 self.canvas.mpl_disconnect(cid)
-            except Exception:
+            except (AttributeError, RuntimeError):
                 pass
+            except Exception as e:
+                import logging
+                logging.warning(f"Error disconnecting matplotlib callback {cid}: {e}")
         self._cids.clear()
+        
+        # Close matplotlib figure properly to prevent memory leaks
+        try:
+            self.fig.clear()
+            import matplotlib.pyplot as plt
+            plt.close(self.fig)
+        except Exception as e:
+            import logging
+            logging.warning(f"Error closing matplotlib figure: {e}")
+        
         super().closeEvent(event)
 
     # ---------- results API ----------
