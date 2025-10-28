@@ -552,3 +552,73 @@ Choose one of the remaining medium-priority tasks:
 - Task 5: Fix ASCII XES loader (needs sample beamline file)
 - Task 6: Fix channel selection workflow bug
 - Task 7: Add 'Clear All' button to background extraction dialog
+
+---
+
+## 🔄 Session 2 Outcome (Oct 28, 2025)
+
+### ✅ Successfully Completed
+- **RXES Normalisation** - Fixed with 1-line change (commit 42d6178)
+- **XES Background Extraction Segfault** - Fixed with comprehensive improvements (commit ad1ec79)
+- **Documentation** - README and PLAN.md updated (commit 9386d5d)
+
+### ⚠️ ASCII Loading - Rolled Back
+**Attempted**: Full ASCII loading for both XES (1D) and RXES (2D)  
+**Status**: Rolled back due to identified issues  
+**Commits Reverted**: d1d4ecc through 942c836 (5 commits)
+
+**Issues Found**:
+1. XES loader can incorrectly load RXES files (no guard rails)
+2. RXES mesh reconstruction produces pixelated plots
+3. Sparse scan handling inadequate (867 points → 51×87 mesh = 20% filled)
+4. Missing interpolation for incomplete meshes
+5. Testing incomplete (no GUI visualization before commit)
+
+**Documentation**: See `ASCII_LOADER_NOTES.md` for:
+- Complete root cause analysis
+- Detailed implementation recommendations
+- Code examples for proper fixes
+- Success criteria for next attempt
+
+### 📊 Current Branch State
+**Branch**: dev-i20xes  
+**Commits**: 4 total (including rollback documentation)  
+**Status**: Stable - 2 critical bugs fixed and tested  
+**Sample File**: Preserved at `i20_xes/data/rxes/XES_ZnZSM5_air500_279192_1.dat`
+
+```
+ed835e2 Rollback ASCII loader implementation - comprehensive issue documentation
+9386d5d Update documentation: mark RXES normalisation and segfault bugs as fixed
+ad1ec79 Fix XES background extraction segfault issues
+42d6178 Fix RXES normalisation bug: use type='XES' instead of type='RXES'
+```
+
+### 🎯 Next Session Priorities
+
+**HIGH PRIORITY: ASCII Loading (Redo Properly)**
+
+Required steps:
+1. ✅ **Add Guard Rails to XES Loader** (Essential first step)
+   - Detect when both Ω and ω vary significantly (>0.5 eV)
+   - Raise clear error directing user to RXES loader
+   - Prevents 2D data being forced into 1D
+
+2. ✅ **Implement RXES Mesh Reconstruction with Interpolation**
+   - Use `scipy.interpolate.griddata` for sparse data
+   - Detect mesh fill percentage and warn if <50%
+   - Support multiple strategies (direct mapping vs interpolation)
+
+3. ✅ **Test in GUI Before Committing**
+   - Verify visualization matches NeXus-loaded RXES
+   - Test with both complete and sparse meshes
+   - Validate both detector channels
+
+See `ASCII_LOADER_NOTES.md` for detailed code examples and implementation strategy.
+
+**ALTERNATIVE PRIORITIES** (if ASCII loading deferred):
+- Fix channel selection workflow bug (medium)
+- Add 'Clear All' button to background extraction (low)
+
+---
+
+**HANDOVER COMPLETE** - All context preserved for next session
