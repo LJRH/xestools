@@ -103,6 +103,11 @@ Notes:
 - Loading XES gives an error about 'channel not found':
   - You have to select the correct channel first using the radio button and then load the scans (bug).
 
+## To do
+- Fix RXES normalisation
+- Fix XES background extraction intermittent segmentation fault bug.
+- Add a XES background extraction 'Clear All' button.
+
 ## License
 
 MIT
