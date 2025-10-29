@@ -285,8 +285,8 @@ class MainWindow(QMainWindow):
 
     # ---------------- Load dispatcher ----------------
     def on_load(self):
-        choices = ["RXES scan (.nxs)", "XES spectra (1D, multiple)"]
-        choice, ok = QInputDialog.getItem(self, "Load", "What would you like to load?", choices, 0, False)
+        choices = ["RXES scan (.nxs, .dat)", "XES spectra (.nxs, .dat)"]
+        choice, ok = QInputDialog.getItem(self, "Load I20 Data", "Map or 1D Emission?", choices, 0, False)
         if not ok:
             return
         if choice.startswith("RXES"):
@@ -1346,11 +1346,6 @@ class MainWindow(QMainWindow):
         # Apply enable states (greys out unavailable channel)
         self.xes_panel.rb_upper.setEnabled(enable_upper)
         self.xes_panel.rb_lower.setEnabled(enable_lower)
-    # def _update_xes_buttons(self):
-    #     has_avg = self._xes_avg is not None and len(self._xes_avg[0]) > 0
-    #     self.xes_panel.btn_save_average.setEnabled(has_avg)
-    #     has_norm = has_avg and bool(self._xes_avg_norm_factor)
-    #     self.xes_panel.btn_save_avg_norm.setEnabled(has_norm)
 
     # ---------------- Generic saves ----------------
     def on_save_ascii(self):
