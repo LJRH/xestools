@@ -1,7 +1,15 @@
-import os
+import os, gc, logging, traceback, weakref
 from typing import Optional, List, Tuple
 
 import numpy as np
+
+# Set up logging for enhanced error handling and debugging
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[%(levelname)s] %(name)s:%(lineno)d - %(message)s')
+    handler.setFormatter(formatter)
+    logger.setLevel(logging.WARN)
 from PySide6.QtCore import Qt, QSignalBlocker
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QTabWidget,
@@ -23,10 +31,16 @@ AVG_KEY = "average"
 BKSUB_KEY = "average_bksub"  # note: 'bksub' (no 'g')
 
 class MainWindow(QMainWindow):
+    """Enhanced Main Window with comprehensive error handling, logging, and memory management."""
     def __init__(self):
+        logger.info("Initializing MainWindow")
         super().__init__()
-        self.setWindowTitle("I20 XES/RXES Viewer")
+        self.setWindowTitle("Luke's Handy I20 XES/RXES Explorer")
         self.resize(1300, 900)
+        
+        # Enhanced state tracking for cleanup
+        self._is_closing = False
+        self._plot_widget_ref: Optional[weakref.ReferenceType] = None
 
         # Session containers
         self.scan = Scan()
@@ -67,12 +81,20 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.tabs)
         left_layout.addStretch(1)
 
-        # Right: Plot
+        # Right: Enhanced Plot with error handling
+        logger.debug(f"Creating plot widget: {PlotWidget.__name__}")
         self.plot = PlotWidget()
+        
+        # Store weak reference for cleanup tracking
+        if hasattr(self.plot, '__weakref__'):
+            self._plot_widget_ref = weakref.ref(self.plot)
+        
         try:
-            self.plot.lines_changed.connect(self.update_profiles)
-        except Exception:
-            pass
+            if hasattr(self.plot, 'lines_changed'):
+                self.plot.lines_changed.connect(self.update_profiles)
+                logger.debug("Connected plot lines_changed signal")
+        except Exception as e:
+            logger.warning(f"Failed to connect plot lines_changed signal: {e}")
 
         root_layout.addWidget(left_container, 0)
         root_layout.addWidget(self.plot, 1)
@@ -135,6 +157,71 @@ class MainWindow(QMainWindow):
 
         self.update_ui_state()
         self._refresh_xes_plot()
+        
+        logger.info("Enhanced MainWindow initialization complete")
+
+    def closeEvent(self, event):
+        """Handle window closure with comprehensive cleanup."""
+        logger.info("Enhanced MainWindow closeEvent triggered")
+        
+        try:
+            self._is_closing = True
+            
+            # Cleanup plot widget if it has cleanup methods
+            if hasattr(self.plot, 'closeEvent'):
+                try:
+                    self.plot.closeEvent(event)
+                    logger.debug("Plot widget cleanup triggered")
+                except Exception as e:
+                    logger.warning(f"Error during plot widget cleanup: {e}")
+            
+            # Clear data structures to free memory
+            self._cleanup_data_structures()
+            
+            # Force garbage collection
+            gc.collect()
+            
+            logger.info("Enhanced MainWindow cleanup completed")
+            
+        except Exception as e:
+            logger.error(f"Error during closeEvent: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        finally:
+            # Always accept the close event
+            event.accept()
+            
+            # Call parent closeEvent
+            try:
+                super().closeEvent(event)
+            except Exception as e:
+                logger.warning(f"Error calling parent closeEvent: {e}")
+
+    def _cleanup_data_structures(self):
+        """Clean up data structures to free memory."""
+        logger.debug("Cleaning up data structures")
+        
+        try:
+            # Clear large data structures
+            if hasattr(self, '_xes_items'):
+                self._xes_items.clear()
+            if hasattr(self, '_last_profiles'):
+                self._last_profiles.clear()
+            
+            # Clear arrays
+            self._last_bkg = None
+            self._last_resid = None
+            self._xes_wide = None
+            self._xes_avg = None
+            self._xes_avg_bksub = None
+            
+            # Clear dataset
+            self.dataset = None
+            
+            logger.debug("Data structures cleaned up")
+            
+        except Exception as e:
+            logger.error(f"Error cleaning up data structures: {e}")
 
     # ---------------- UI state and Dataset ----------------
     def update_ui_state(self):

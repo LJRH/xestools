@@ -2,6 +2,14 @@
 
 A lightweight PySide6 GUI to load, view, and process Diamond I20 RXES maps and XES spectra. It supports viewing RXES maps in incident or energy-loss mode, mutliple RXES cuts, multi-scan XES averaging, area-based normalisation, LMFIT-based background extraction of XES, and exporting results as CSV or NeXus.
 
+The application includes comprehensive stability features:
+- Segfault prevention across RXES viewer and background subtraction
+- Memory monitoring and automatic crash reporting
+- Proper matplotlib resource cleanup and error handling
+- System-level fault detection and graceful shutdown
+- Timestamped logging with automatic rotation
+- Qt exception handling and signal management
+
 ## Features
 
 - RXES (.nxs) loader with detector channel selection (Upper/Lower)
@@ -27,8 +35,11 @@ Requirements:
 - numpy
 - Optional (recommended): h5py (NeXus/HDF5 load/save)
 - Optional: lmfit (background fitting), matplotlib (plotting, if used by PlotWidget)
+- Optional: psutil (memory monitoring)
 
-``` python3 ./main.py```
+``` 
+python3 ./main.py
+```
 
 ### Singularity
 A build script is a work in progress. A singularity file exists.
@@ -36,21 +47,21 @@ A build script is a work in progress. A singularity file exists.
 ## Usage
 
 - RXES
-  - Load RXES scan: “Load” → “RXES scan (.nxs)”
+  - Load RXES scan: "Load" → "RXES scan (.nxs)"
   - Select channel (Upper/Lower) and view mode (Incident/Transfer)
   - Add/move ROI lines to extract profiles; adjust bandwidth
   - Save profiles as CSV or export current dataset (CSV/NeXus)
-  - Normalise RXES by area: “Load XES…” and select an area on the 1D spectrum
+  - Normalise RXES by area: "Load XES…" and select an area on the 1D spectrum
 
 - XES
-  - Load multiple spectra: “Load Scans…”
+  - Load multiple spectra: "Load Scans…"
   - Tick to include in overlays and averaging
-  - “Average Ticked” to build the average; save with “Save Average”
-  - Normalise using external XES: “Load XES…” → select area
-    - Save the normalised single/average via “Save Normalised” / “Save Normalised Avg.”
+  - "Average Ticked" to build the average; save with "Save Average"
+  - Normalise using external XES: "Load XES…" → select area
+    - Save the normalised single/average via "Save Normalised" / "Save Normalised Avg."
   - Background:
-    - Optionally “Load Wide Scan…”
-    - Run “Background Extraction…”, then save the fit log and background/residual CSV
+    - Optionally "Load Wide Scan…"
+    - Run "Background Extraction…", then save the fit log and background/residual CSV
 
 Notes:
 - Load data from the I20 nexus files.
@@ -74,7 +85,7 @@ Notes:
   - Construct the energy-transfer coordinates for plotting:
     - Keep the X axis as incident energy: X2D = broadcast(x_Omega)[None, :].
     - Compute the energy transfer Δ row-wise: Y2D = X2D − broadcast(y_omega)[:, None].
-    - This yields a grid where each pixel’s Y value is the energy transfer Δ = Ω − ω.
+    - This yields a grid where each pixel's Y value is the energy transfer Δ = Ω − ω.
 
 ## File formats
 
@@ -96,12 +107,15 @@ Notes:
 
 ## Troubleshooting
 
-- Switching XES Upper/Lower doesn’t change curves:
+- Switching XES Upper/Lower doesn't change curves:
   - The app reloads items for the selected channel; if a reload fails, a warning lists problem files.
-- “Save NeXus” disabled:
+- "Save NeXus" disabled:
   - Install h5py: `pip install h5py`.
 - Loading XES gives an error about 'channel not found':
   - You have to select the correct channel first using the radio button and then load the scans (bug).
+- Application crashes or segfaults:
+  - Check the logs/ directory for crash reports and diagnostic information
+  - The application includes comprehensive stability features to prevent and recover from crashes
 
 ## To do
 - Fix ASCII XES loader to support beamline format files.
@@ -109,10 +123,16 @@ Notes:
 - Add a XES background extraction 'Clear All' button.
 
 ## Recently Fixed
+- ✅ **Comprehensive Segfault Prevention** (Oct 29, 2025) - Complete overhaul of crash prevention across all components:
+  - RXES viewer with proper matplotlib resource cleanup
+  - Background subtraction dialog crash prevention with memory management
+  - System-level fault detection and graceful shutdown handling
+  - Memory monitoring and automatic crash reporting capabilities
+  - Qt exception handling and signal management
+  - Proper resource cleanup in plot widgets and dialogs
 - ✅ RXES normalisation (Oct 28, 2025) - Fixed type parameter in XES loader call
 - ✅ XES background extraction segfault (Oct 28, 2025) - Improved resource cleanup and error handling
 
 ## License
 
 MIT
-     

@@ -36,7 +36,7 @@ def is_probably_detector_hdf(path: str) -> bool:
 def reduce_axes_for(emission_2d: np.ndarray,bragg_offset_2d: Optional[np.ndarray],) -> Tuple[np.ndarray, np.ndarray, bool]:
     """
     Build 1D axes from 2D meshes so that:
-      - y (rows) is emission energy ω
+      - y (rows) is emission energy ω (XESEnergy Upper or Lower)
       - x (columns) is incident energy Ω (bragg1WithOffset)
 
     Returns (y_omega, x_Omega, transposed), where:
