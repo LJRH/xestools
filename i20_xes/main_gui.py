@@ -33,7 +33,7 @@ BKSUB_KEY = "average_bksub"  # note: 'bksub' (no 'g')
 class MainWindow(QMainWindow):
     """Enhanced Main Window with comprehensive error handling, logging, and memory management."""
     def __init__(self):
-        logger.info("Initializing MainWindow")
+
         super().__init__()
         self.setWindowTitle("Luke's Handy I20 XES/RXES Explorer")
         self.resize(1300, 900)
@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
         self._last_resid: tuple[np.ndarray, np.ndarray] | None = None  # (x, residual)
         self._last_bkg_report: str = ""
         self._xes_wide: tuple[np.ndarray, np.ndarray, str] | None = None  # (x, y, path)
-        self._xes_avg: Optional[tuple[np.ndarray, np.ndarray]] = None
+
         self._xes_avg_bksub: Optional[tuple[np.ndarray, np.ndarray]] = None
 
         # XES multi-scan workflow
@@ -82,17 +82,14 @@ class MainWindow(QMainWindow):
         left_layout.addStretch(1)
 
         # Right: Enhanced Plot with error handling
-        logger.debug(f"Creating plot widget: {PlotWidget.__name__}")
         self.plot = PlotWidget()
         
         # Store weak reference for cleanup tracking
-        if hasattr(self.plot, '__weakref__'):
-            self._plot_widget_ref = weakref.ref(self.plot)
+        self._plot_widget_ref = weakref.ref(self.plot)
         
         try:
             if hasattr(self.plot, 'lines_changed'):
                 self.plot.lines_changed.connect(self.update_profiles)
-                logger.debug("Connected plot lines_changed signal")
         except Exception as e:
             logger.warning(f"Failed to connect plot lines_changed signal: {e}")
 
@@ -143,7 +140,6 @@ class MainWindow(QMainWindow):
         self.xes_panel.rb_lower.toggled.connect(self.on_xes_channel_changed)
 
         # XES background extraction state
-        self._xes_wide: Optional[Tuple[np.ndarray, np.ndarray]] = None
         self._xes_fit_bounds: Optional[Tuple[float, float, float, float]] = None
         self._xes_background: Optional[Tuple[np.ndarray, np.ndarray]] = None
         self._xes_residual: Optional[Tuple[np.ndarray, np.ndarray]] = None
@@ -158,7 +154,7 @@ class MainWindow(QMainWindow):
         self.update_ui_state()
         self._refresh_xes_plot()
         
-        logger.info("Enhanced MainWindow initialization complete")
+        logger.info("MainWindow initialized")
 
     def closeEvent(self, event):
         """Handle window closure with comprehensive cleanup."""
@@ -983,37 +979,7 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Saved background/residual: {path}", 5000)
         except Exception as e:
             QMessageBox.critical(self, "Save error", f"Failed to save background/residual:\n{e}")
-    # def on_xes_save_bkg_data(self):
-        # if self._last_bkg is None or self._last_resid is None:
-        #     QMessageBox.information(self, "Save background", "No background/residual to save. Run Background Extraction first.")
-        # #     return
-        # x_bg, y_bg = self._last_bkg
-        # x_rs, y_rs = self._last_resid
-        # # Defensive alignment
-        # if not np.array_equal(x_bg, x_rs):
-        #     xs = np.intersect1d(x_bg, x_rs)
-        #     if xs.size == 0:
-        #         QMessageBox.warning(self, "Save background", "Could not align background and residual on a common grid.")
-        #         return
-        #     y_bg = np.interp(xs, x_bg, y_bg, left=np.nan, right=np.nan)
-        #     y_rs = np.interp(xs, x_rs, y_rs, left=np.nan, right=np.nan)
-        #     x_out = xs
-        # else:
-        #     x_out = x_bg
-        # # Build output array
-        # out = np.column_stack([x_out, y_bg, y_rs])
 
-        # default_name = "bkg_extracted.csv"
-        # path, _ = QFileDialog.getSaveFileName(self, "Save background/residual", default_name, "CSV (*.csv);;All files (*)")
-        # if not path:
-        #     return
-        # try:
-        #     with open(path, "w", encoding="utf-8", newline="") as fh:
-        #         fh.write("omega_eV,background,residual\n")
-        #         np.savetxt(fh, out, delimiter=",", fmt="%.10g", comments="")
-        #     self.status.showMessage(f"Saved background/residual: {path}", 5000)
-        # except Exception as e:
-        #     QMessageBox.critical(self, "Save error", f"Failed to save background/residual:\n{e}")
     def _update_bkg_buttons(self):
         has_fit = bool(self._last_bkg_report) and (self._last_bkg is not None) and (self._last_resid is not None)
         try:
@@ -1404,92 +1370,3 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Save error", f"Failed to save NeXus:\n{path}\n\n{e}")
 
-
-        has_fit = (self._last_bkg is not None) and (self._last_resid is not None)
-        self.xes_panel.btn_save_fit_log.setEnabled(bool(self._last_bkg_report))
-        self.xes_panel.btn_save_bkg_data.setEnabled(has_fit)
-
-
-        """
-        Rebuild the XES overlay plot. Only ticked real scans are drawn.
-        Specials:
-        - 'average' plotted only if its row is checked and self._xes_avg exists.
-        - 'average_bksub' plotted only if its row is checked and buffer exists.
-        """
-        curves = []
-        real_idx = 0
-        show_average = False
-        show_bksub = False
-
-        for row in range(self.xes_panel.list.count()):
-            lit = self.xes_panel.list.item(row)
-            key = lit.data(SPECIAL_ROLE)
-            if key == AVG_KEY:
-                show_average = (lit.checkState() == Qt.CheckState.Checked)
-                continue
-            elif key == BKSUB_KEY:
-                show_bksub = (lit.checkState() == Qt.CheckState.Checked)
-                continue
-            if real_idx >= len(self._xes_items):
-                break
-            if lit.checkState() == Qt.CheckState.Checked:
-                item = self._xes_items[real_idx]
-                curves.append({
-                    "x": item["x"], "y": item["y"],
-                    "label": item["label"], "alpha": 0.9, "color": None
-                })
-            real_idx += 1
-
-        avg = None
-        if self._xes_avg is not None and show_average:
-            avg = {"x": self._xes_avg[0], "y": self._xes_avg[1], "label": "Average (XES)"}
-
-        if getattr(self, "_xes_avg_bksub", None) is not None and show_bksub:
-            bx, by = self._xes_avg_bksub
-            curves.append({"x": bx, "y": by, "label": "Average bksub", "alpha": 1.0, "color": "tab:purple"})
-
-        try:
-            self.plot.plot_xes_bundle(curves, avg=avg, title="XES scans (overlays)")
-        except Exception:
-            if avg is not None:
-                self.plot.plot(DataSet("1D", x=avg["x"], y=avg["y"], xlabel="ω (eV)", ylabel="Intensity (XES)"))
-            else:
-                self.plot.plot(None)
-
-        if avg is not None:
-            self.dataset = DataSet("1D", x=avg["x"], y=avg["y"], xlabel="ω (eV)", ylabel="Intensity (XES)")
-
-        self.update_status_label()
-        if hasattr(self, "_update_xes_buttons"):
-            self._update_xes_buttons()
-
-
-        if self.tabs.currentIndex() == 1 or (self.dataset and self.dataset.kind == "1D"):
-            chan = "Upper" if self.xes_panel.rb_upper.isChecked() else "Lower"
-            base = ""
-            self.io_panel.status_label.setText(f"Channel: {chan} | Mode: XES (1D bundle) | File: {base}")
-        else:
-            self.update_ui_state()
-
-
-    # ---------- XES: load 'wide' scan ----------
-
-        if self.dataset is None:
-            QMessageBox.information(self, "No data", "Nothing to save.")
-            return
-        try:
-            if not io_mod.H5_AVAILABLE:
-                QMessageBox.warning(self, "h5py missing", "Install h5py to save NeXus files: pip install h5py")
-                return
-        except Exception:
-            pass
-        base = "data.nxs"
-        start = os.path.join(os.path.dirname(self.dataset.source), base) if self.dataset.source else base
-        path, _ = QFileDialog.getSaveFileName(self, "Save as NeXus (HDF5)", start, "NeXus/HDF5 (*.nxs *.h5 *.hdf5);;All files (*)")
-        if not path:
-            return
-        try:
-            io_mod.save_nexus(path, self.dataset)
-            self.status.showMessage(f"Saved NeXus: {path}", 5000)
-        except Exception as e:
-            QMessageBox.critical(self, "Save error", f"Failed to save NeXus:\n{path}\n\n{e}")
