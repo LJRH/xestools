@@ -497,8 +497,25 @@ def xes_from_nxs(
             return _reduce_to_1d(omega, inten)
 def xes_from_ascii(path: str) -> Tuple[np.ndarray, np.ndarray]:
     """
-    ASCII two-column XES: X=energy (ω or Ω), Y=intensity.
+    Load 1D XES from ASCII file.
+    
+    Supports both:
+    - I20 beamline format (.dat) - multi-column with header
+    - Simple 2-column format - energy, intensity
     """
+    # Try I20 format first
+    try:
+        metadata = parse_i20_ascii_metadata(path)
+        if metadata['scan_type'] == 'XES':
+            # Use I20-specific loader
+            scan = Scan()
+            snum = add_scan_from_i20_ascii(scan, path)
+            entry = scan[snum]
+            return entry['energy'], entry['intensity']
+    except Exception:
+        pass  # Fall through to simple format
+    
+    # Fallback: simple 2-column format
     data = np.genfromtxt(path, comments="#", delimiter=None, dtype=float)
     data = np.atleast_2d(data)
     if data.shape[1] < 2:
@@ -529,9 +546,16 @@ def xes_from_path(
     type: str = "RXES",
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Load a 1D spectrum from either an I20 .nxs (NeXus) or an ASCII two-column file.
+    Load a 1D spectrum from either an I20 .nxs (NeXus) or ASCII file.
 
+    ASCII files:
+    - I20 beamline format (.dat) - multi-column with metadata
+    - Simple 2-column format - energy, intensity
+    
     For .nxs, set type='XES' to use emission energy on X; 'RXES' (default) uses incident energy.
+    
+    Note: ASCII RXES files are automatically handled - they will be loaded as full 2D scans
+    then reduced to 1D by xes_from_ascii().
     """
     ext = os.path.splitext(path)[1].lower()
     if ext == ".nxs":
