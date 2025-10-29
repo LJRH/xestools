@@ -1,0 +1,38 @@
+2025-10-29 20:43:59,107 INFO     xestools             [main.py:307] Logging initialized. Log file: /mnt/media_hermes/Work/i20xes/logs/xestools_20251029_204359.log
+2025-10-29 20:43:59,107 INFO     xestools             [main.py:308] Error log file: /mnt/media_hermes/Work/i20xes/logs/xestools_errors_20251029_204359.log
+2025-10-29 20:43:59,107 INFO     xestools             [main.py:422] ============================================================
+2025-10-29 20:43:59,107 INFO     xestools             [main.py:423] XES Tools Enhanced Startup
+2025-10-29 20:43:59,108 INFO     xestools             [main.py:424] ============================================================
+2025-10-29 20:43:59,108 INFO     xestools             [main.py:427] Python version: 3.12.12 | packaged by conda-forge | (main, Oct 22 2025, 23:25:55) [GCC 14.3.0]
+2025-10-29 20:43:59,111 INFO     xestools             [main.py:428] Platform: Linux-6.1.0-40-amd64-x86_64-with-glibc2.36
+2025-10-29 20:43:59,121 INFO     xestools             [main.py:429] Architecture: 64bit
+2025-10-29 20:43:59,121 INFO     xestools             [main.py:430] Processor: 
+2025-10-29 20:43:59,121 INFO     xestools             [main.py:431] Working directory: /mnt/media_hermes/Work/i20xes
+2025-10-29 20:43:59,121 INFO     xestools             [main.py:442] Memory info: psutil not available
+2025-10-29 20:43:59,121 INFO     xestools             [main.py:445] PYTHONPATH: Not set
+2025-10-29 20:43:59,121 INFO     xestools             [main.py:446] Qt platform: default
+2025-10-29 20:43:59,161 INFO     xestools             [main.py:453] ✓ PySide6 available
+2025-10-29 20:43:59,209 INFO     xestools             [main.py:453] ✓ numpy available
+2025-10-29 20:43:59,230 INFO     xestools             [main.py:453] ✓ h5py available
+2025-10-29 20:43:59,292 INFO     xestools             [main.py:453] ✓ matplotlib available
+2025-10-29 20:43:59,634 INFO     xestools             [main.py:453] ✓ lmfit available
+2025-10-29 20:43:59,635 INFO     xestools             [main.py:463] ○ psutil not available (optional)
+2025-10-29 20:43:59,635 INFO     xestools             [main.py:461] ✓ resource available (optional)
+2025-10-29 20:43:59,635 INFO     xestools             [main.py:465] ============================================================
+2025-10-29 20:43:59,635 DEBUG    xestools             [main.py:411] Registered handler for signal 15
+2025-10-29 20:43:59,635 DEBUG    xestools             [main.py:411] Registered handler for signal 2
+2025-10-29 20:43:59,635 DEBUG    xestools             [main.py:411] Registered handler for signal 1
+2025-10-29 20:43:59,635 DEBUG    xestools             [main.py:411] Registered handler for signal 3
+2025-10-29 20:43:59,635 WARNING  xestools             [main.py:78] Memory monitoring disabled: psutil not available
+2025-10-29 20:43:59,635 INFO     xestools             [main.py:494] Importing Qt modules...
+2025-10-29 20:43:59,654 INFO     xestools             [main.py:527] Creating Qt application...
+2025-10-29 20:44:00,825 INFO     xestools             [main.py:535] Importing main window...
+2025-10-29 20:44:01,114 INFO     xestools             [main.py:543] Creating main window...
+2025-10-29 20:44:01,155 INFO     xestools             [main.py:546] Showing main window...
+2025-10-29 20:44:01,304 INFO     xestools             [main.py:549] Starting Qt event loop...
+2025-10-29 20:45:40,784 INFO     xestools             [main.py:552] Qt application exited with code: 0
+2025-10-29 20:45:40,785 INFO     xestools             [main.py:355] Initiating graceful shutdown...
+2025-10-29 20:45:40,785 INFO     xestools             [main.py:93] Memory monitoring stopped. Peak memory usage: 0.0 MB
+2025-10-29 20:45:40,785 INFO     xestools             [main.py:367] Application uptime: 101.7 seconds
+2025-10-29 20:45:40,785 INFO     xestools             [main.py:376] Closing Qt application...
+2025-10-29 20:45:40,785 INFO     xestools             [main.py:392] Shutdown complete

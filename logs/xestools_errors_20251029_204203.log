@@ -1,0 +1,10 @@
+2025-10-29 20:42:05,791 CRITICAL xestools             [main.py:573] Fatal error during startup: name 'PlotWidgetClass' is not defined
+Traceback (most recent call last):
+  File "/mnt/media_hermes/Work/i20xes/main.py", line 544, in main
+    window = MainWindow()
+             ^^^^^^^^^^^^
+  File "/mnt/media_hermes/Work/i20xes/i20_xes/main_gui.py", line 85, in __init__
+    logger.debug(f"Creating plot widget: {PlotWidgetClass.__name__}")
+                                          ^^^^^^^^^^^^^^^
+NameError: name 'PlotWidgetClass' is not defined
+2025-10-29 20:42:05,851 ERROR    xestools             [main.py:250] Crash report saved: /mnt/media_hermes/Work/i20xes/logs/crash_reports/crash_report_20251029_204205.json
