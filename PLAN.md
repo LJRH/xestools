@@ -193,10 +193,10 @@ Background extraction should be significantly more stable. Needs user testing to
 
 ### 🟡 MEDIUM PRIORITY - Workflow Issues
 
-#### **Task 5: Fix ASCII XES Loader**
-**Status**: Not started  
+#### **Task 5: Fix ASCII XES Loader** ✅ COMPLETED
+**Status**: ✅ Completed in commits 34cddaa, 40f8be7  
 **Priority**: Medium  
-**Location**: `i20_xes/modules/i20_loader.py:186-197`
+**Location**: `i20_xes/modules/i20_loader.py`
 
 **Current Implementation** (`xes_from_ascii()`):
 ```python
@@ -557,11 +557,16 @@ Before considering work complete:
 - ✅ Memory monitoring and automatic crash reporting capabilities
 - ✅ Qt exception handling and signal management improvements
 - ✅ Stability improvements integrated into main files and tested
+- ✅ **ASCII Loader Implementation (NEW)** - Full I20 beamline format support:
+  - Unified grid processing pipeline (shared by NeXus and ASCII)
+  - Automatic RXES/XES detection and outer/inner axis identification
+  - 2D grid reconstruction from flat ASCII data
+  - Fully tested with actual I20 RXES file
+  - Seamlessly integrated with existing API
 - ✅ Updated PLAN.md and documentation
 
 **NEXT SESSION**: 
 Choose one of the remaining medium-priority tasks:
-- Task 5: Fix ASCII XES loader (needs sample beamline file)
 - Task 6: Fix channel selection workflow bug
 - Task 7: Add 'Clear All' button to background extraction dialog
 

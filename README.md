@@ -64,9 +64,12 @@ A build script is a work in progress. A singularity file exists.
     - Run "Background Extraction…", then save the fit log and background/residual CSV
 
 Notes:
-- Load data from the I20 nexus files.
+- Load data from I20 NeXus files (.nxs) or ASCII files (.dat/.txt/.csv).
 
-- ASCII XES expects two numeric columns: energy, intensity (.txt/.dat/.csv). Currently, loading beamline ascii files DOES NOT WORK.
+- ASCII file support:
+  - **I20 beamline format**: Multi-column .dat files with metadata headers (RXES and XES)
+  - **Simple format**: Two-column files with energy and intensity
+  - The loader automatically detects the format and loads accordingly
 
 - Raw detector HDF files are detected and rejected; load the scan .nxs instead.
 
@@ -118,11 +121,17 @@ Notes:
   - The application includes comprehensive stability features to prevent and recover from crashes
 
 ## To do
-- Fix ASCII XES loader to support beamline format files.
 - Fix channel selection workflow bug (allow switching Upper/Lower after loading scans).
 - Add a XES background extraction 'Clear All' button.
 
 ## Recently Fixed
+- ✅ **ASCII Loader Implementation** (Oct 29, 2025) - Complete I20 beamline ASCII file support:
+  - Unified grid processing pipeline shared between NeXus and ASCII loaders
+  - Automatic detection of RXES vs XES scan types
+  - Auto-detection of outer/inner scan axes
+  - Proper 2D grid reconstruction from 1D flat data
+  - Seamless integration with existing API (xes_from_ascii, xes_from_path)
+  - Backward compatible with simple 2-column ASCII format
 - ✅ **Comprehensive Segfault Prevention** (Oct 29, 2025) - Complete overhaul of crash prevention across all components:
   - RXES viewer with proper matplotlib resource cleanup
   - Background subtraction dialog crash prevention with memory management
