@@ -133,8 +133,6 @@ def validate_rxes_data(
         'has_finite_data': finite_fraction > 0,
         'finite_fraction': finite_fraction,
     }
-
-
 def analyze_grid_structure(
     bragg: np.ndarray,
     emission: np.ndarray,
@@ -225,8 +223,6 @@ def analyze_grid_structure(
         'grid_completeness': grid_completeness,
         'needs_reshaping': (actual_points == expected_points and is_regular_grid),
     }
-
-
 def normalize_grid_to_2d(
     bragg: np.ndarray,
     emission: np.ndarray,
@@ -336,8 +332,6 @@ def normalize_grid_to_2d(
         'method': method,
         'warnings': warnings_list,
     }
-
-
 def create_rxes_scan_entry(
     grids: dict,
     channel: str,
@@ -732,8 +726,6 @@ def parse_i20_ascii_metadata(path: str) -> dict:
         raise ValueError("Could not determine scan type (RXES/XES)")
     
     return metadata
-
-
 def load_i20_ascii_data(path: str, metadata: dict) -> np.ndarray:
     """
     Load numeric data from I20 ASCII file.
@@ -782,8 +774,6 @@ def load_i20_ascii_data(path: str, metadata: dict) -> np.ndarray:
         )
     
     return data
-
-
 def add_scan_from_i20_ascii(
     scan: Scan,
     path: str,

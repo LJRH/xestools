@@ -294,21 +294,39 @@ class MainWindow(QMainWindow):
         else:
             self.on_xes_load_scans()
     def _load_rxes_scan(self):
-        filters = ["NeXus scans (*.nxs *.h5 *.hdf *.hdf5)", "All files (*)"]
+        filters = [
+            "RXES scans (*.nxs *.h5 *.hdf *.hdf5 *.dat *.txt *.csv)",
+            "NeXus (*.nxs *.h5 *.hdf *.hdf5)",
+            "ASCII (*.dat *.txt *.csv)",
+            "All files (*)"
+        ]
         path, _ = QFileDialog.getOpenFileName(self, "Load RXES scan", "", ";;".join(filters))
         if not path:
             return
         try:
             ext = os.path.splitext(path)[1].lower()
-            if ext in (".nxs", ".h5", ".hdf", ".hdf5") and i20_loader.is_probably_detector_hdf(path):
-                QMessageBox.warning(self, "Detector HDF selected",
-                                    "This looks like a raw detector file. Please pick the scan .nxs/.h5.")
-                return
-            scan_number = i20_loader.add_scan_from_nxs(self.scan, path)
+            
+            # Handle NeXus files
+            if ext in (".nxs", ".h5", ".hdf", ".hdf5"):
+                if i20_loader.is_probably_detector_hdf(path):
+                    QMessageBox.warning(self, "Detector HDF selected",
+                                        "This looks like a raw detector file. Please pick the scan .nxs/.h5.")
+                    return
+                scan_number = i20_loader.add_scan_from_nxs(self.scan, path)
+            
+            # Handle ASCII files
+            elif ext in (".dat", ".txt", ".csv"):
+                scan_number = i20_loader.add_scan_from_i20_ascii(self.scan, path)
+            
+            # Unknown extension - try NeXus as default
+            else:
+                scan_number = i20_loader.add_scan_from_nxs(self.scan, path)
+            
             self.current_scan_number = scan_number
             self.status.showMessage(f"Loaded RXES: {path}", 5000)
             self.tabs.setCurrentIndex(0)
             self.refresh_rxes_view()
+            
         except Exception as e:
             QMessageBox.critical(self, "Load error", f"Failed to load RXES:\n{path}\n\n{e}")
 
