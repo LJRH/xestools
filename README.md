@@ -63,7 +63,48 @@ A build script is a work in progress. A singularity file exists.
     - Optionally "Load Wide Scan…"
     - Run "Background Extraction…", then save the fit log and background/residual CSV
 
-Notes:
+## Command-Line Data Analysis
+
+Export data for advanced analysis with pandas, xarray, or other tools:
+
+```python
+from i20_xes.modules import i20_loader
+from i20_xes.modules.scan import Scan
+from i20_xes.modules.cli_export import scan_to_dataframe
+
+# Load data
+scan = Scan()
+snum = i20_loader.add_scan_from_nxs(scan, 'scan.nxs')
+
+# Export to pandas DataFrame
+df = scan_to_dataframe(scan, snum, channel='upper')
+
+# Now use full pandas capabilities
+df.groupby('bragg')['intensity'].mean()
+df.to_csv('data.csv')
+df.to_parquet('data.parquet')  # More efficient
+```
+
+See `examples/` directory for more usage patterns.
+
+### Export Formats
+
+- **pandas DataFrame**: Flattened data, best for analysis
+- **xarray Dataset**: Preserves 2D structure, best for multidimensional ops
+- **HDF5**: Full data preservation, best for archiving
+- **CSV/Parquet**: Standard formats for sharing
+- **NetCDF**: Scientific standard format (requires xarray)
+
+### Dependencies
+
+CLI export requires:
+```bash
+pip install pandas  # Required for DataFrame export
+pip install xarray  # Optional, for xarray/NetCDF
+```
+
+## GUI Usage Notes
+
 - Load data from I20 NeXus files (.nxs) or ASCII files (.dat/.txt/.csv).
 
 - ASCII file support:
