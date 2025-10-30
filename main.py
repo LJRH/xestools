@@ -51,7 +51,11 @@ faulthandler.enable(all_threads=True)
 # Global variables for tracking
 APP_START_TIME = time.time()
 MEMORY_MONITOR_THREAD = None
-LOG_DIR = Path(__file__).parent / "logs"
+# LOG_DIR = Path(__file__).parent / "logs"
+LOG_DIR = Path(os.environ.get("LOG_DIR", "/tmp/xestools_logs"))
+# os.makedirs(LOG_DIR, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 CRASH_REPORT_DIR = LOG_DIR / "crash_reports"
 LOGGER = None
 

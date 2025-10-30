@@ -65,7 +65,7 @@ From: python:3.12-slim-bookworm
     . /opt/venv/bin/activate
 
     pip install --upgrade pip setuptools wheel
-    pip install numpy scipy matplotlib PySide6 h5py lmfit
+    pip install numpy scipy matplotlib PySide6 h5py lmfit psutil
 
     mkdir -p /app
 
