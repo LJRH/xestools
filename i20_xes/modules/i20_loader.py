@@ -655,6 +655,11 @@ def parse_i20_ascii_metadata(path: str) -> dict:
             # Extract command
             if content.startswith('command:'):
                 metadata['command'] = content[8:].strip()
+            # Also check Sample description field (some files embed command here)
+            elif 'Sample description:' in content and 'command:' in content:
+                match = re.search(r'command:\s*(.+)$', content)
+                if match:
+                    metadata['command'] = match.group(1).strip()
             
             # Extract sample name
             elif content.startswith('Sample name:'):
@@ -726,6 +731,76 @@ def parse_i20_ascii_metadata(path: str) -> dict:
         raise ValueError("Could not determine scan type (RXES/XES)")
     
     return metadata
+
+def validate_scan_type_from_data(
+    bragg: np.ndarray,
+    emission: np.ndarray,
+    command_scan_type: Optional[str] = None,
+    threshold: float = 0.5,
+) -> str:
+    """
+    Validate scan type by analyzing actual data variability.
+    
+    Uses standard deviation to detect if axes are scanned vs constant:
+    - std > threshold: axis is scanned
+    - std <= threshold: axis is constant/fixed
+    
+    Three scan types:
+    - RXES: Both bragg and emission vary (2D scan)
+    - XES: Emission varies, bragg fixed (1D emission scan)
+    - XANES: Bragg varies, emission fixed (NOT SUPPORTED)
+    
+    Args:
+        bragg: Bragg energy array (incident energy Ω)
+        emission: Emission energy array (ω)
+        command_scan_type: Scan type inferred from command string (optional)
+        threshold: Std dev threshold in eV (default 0.5)
+    
+    Returns:
+        Validated scan type: 'RXES' or 'XES'
+    
+    Raises:
+        ValueError: If XANES detected (not supported)
+        ValueError: If scan type ambiguous or data inconsistent
+    """
+    bragg_std = np.nanstd(bragg)
+    emission_std = np.nanstd(emission)
+    
+    bragg_varies = bragg_std > threshold
+    emission_varies = emission_std > threshold
+    
+    # Determine actual scan type from data
+    if bragg_varies and emission_varies:
+        actual_type = 'RXES'
+    elif emission_varies and not bragg_varies:
+        actual_type = 'XES'
+    elif bragg_varies and not emission_varies:
+        actual_type = 'XANES'
+    else:
+        raise ValueError(
+            f"Cannot determine scan type: both axes appear constant "
+            f"(bragg std={bragg_std:.3f}, emission std={emission_std:.3f})"
+        )
+    
+    # XANES not supported
+    if actual_type == 'XANES':
+        raise ValueError(
+            f"XANES data detected (bragg scanned, emission fixed). "
+            f"This program is for XES/RXES data only. "
+            f"Bragg std={bragg_std:.2f} eV, Emission std={emission_std:.2f} eV"
+        )
+    
+    # Warn if command disagrees with data
+    if command_scan_type and command_scan_type != actual_type:
+        import warnings
+        warnings.warn(
+            f"Command suggests '{command_scan_type}' but data indicates '{actual_type}'. "
+            f"Using data-based type: {actual_type} "
+            f"(bragg std={bragg_std:.2f}, emission std={emission_std:.2f})"
+        )
+    
+    return actual_type
+
 def load_i20_ascii_data(path: str, metadata: dict) -> np.ndarray:
     """
     Load numeric data from I20 ASCII file.
@@ -831,7 +906,21 @@ def add_scan_from_i20_ascii(
     if scan_number is None:
         scan_number = scan.next_index()
     
-    # Step 4: Process based on scan type
+    # Step 3.5: Validate scan type using actual data
+    try:
+        validated_scan_type = validate_scan_type_from_data(
+            bragg=bragg,
+            emission=emission,
+            command_scan_type=metadata['scan_type'],
+            threshold=0.5  # 0.5 eV threshold
+        )
+        # Update metadata with validated type
+        metadata['scan_type'] = validated_scan_type
+    except ValueError as e:
+        # Re-raise with file context
+        raise ValueError(f"Error validating scan type for {path}: {e}")
+    
+    # Step 4: Process based on validated scan type
     if metadata['scan_type'] == 'XES':
         # Simple 1D - filter and store
         ok = np.isfinite(emission) & np.isfinite(intensity)

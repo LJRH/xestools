@@ -1,22 +1,25 @@
 # I20 XES/RXES Viewer - Development Plan
 
-**Last Updated**: October 29, 2025 (Session 3)  
+**Last Updated**: October 30, 2025 (Session 4)  
 **Repository**: git@github.com:LJRH/i20xes.git  
-**Current Branch**: main (will push to dev-i20xes)  
-**Latest Commit**: Comprehensive segfault prevention enhancements
+**Current Branch**: dev-i20xes  
+**Latest Commit**: Fix XES ASCII loading with data validation and XANES detection
 
 ---
 
 ## 📊 Project Status Overview
 
-### ✅ Recently Fixed (Current Session - Oct 29, 2025)
-- **✅ Comprehensive segfault prevention** - System-level stability improvements integrated into main application
-  - RXES viewer with proper matplotlib resource cleanup (`main_gui.py`)
-  - Background subtraction dialog crash prevention with memory management (`plot_widget.py`)
-  - System-level fault detection and graceful shutdown handling (`main.py`)
-  - Memory monitoring and automatic crash reporting capabilities
-  - Qt exception handling and signal management
-  - Proper resource cleanup in plot widgets and dialogs
+### ✅ Recently Fixed (Current Session - Oct 30, 2025)
+- **✅ XES ASCII loading bug** - FIXED with data validation and XANES detection
+  - Command extraction from "Sample description" field
+  - Data-based scan type validation (0.5 eV threshold)
+  - XANES detection and rejection with clear error messages
+  - All 4 XES test files now load successfully
+  - Full regression testing passed (RXES and NeXus still work)
+
+### ✅ Previously Fixed (Session 3 - Oct 29, 2025)
+- **✅ Comprehensive segfault prevention** - System-level stability improvements
+- **✅ ASCII RXES loader** - Full I20 beamline format support
 
 ### ✅ Previously Fixed (Session 2 - Oct 28, 2025)
 - **✅ RXES normalisation** - Fixed in commit 42d6178 (changed `type="RXES"` to `type="XES"`)
@@ -28,7 +31,7 @@
 - **Build script** - Added `buildxestools.sh` for Singularity container builds
 
 ### 🟡 Current Issues (Medium Priority)
-1. **ASCII XES loading broken** (beamline format files) - Needs sample file
+1. ✅ **ASCII XES loading** - FIXED (Oct 30, 2025)
 2. **Channel selection workflow bug** (must select before loading) - Auto-reload needed
 
 ### 🛠️ Environment Status
@@ -194,8 +197,8 @@ Background extraction should be significantly more stable. Needs user testing to
 ### 🟡 MEDIUM PRIORITY - Workflow Issues
 
 #### **Task 5: Fix ASCII XES Loader** ✅ COMPLETED
-**Status**: ✅ Completed in commits 34cddaa, 40f8be7  
-**Priority**: Medium  
+**Status**: ✅ FULLY COMPLETED - Oct 30, 2025 (Session 4)
+**Priority**: Critical (was blocking user workflow)  
 **Location**: `i20_xes/modules/i20_loader.py`
 
 **Current Implementation** (`xes_from_ascii()`):
@@ -214,56 +217,28 @@ def xes_from_ascii(path: str) -> Tuple[np.ndarray, np.ndarray]:
     return x[ok], y[ok]
 ```
 
-**Known Issue**: 
-README line 58: "Currently, loading beamline ascii files DOES NOT WORK."
+**Issues Found and Fixed**:
+1. **Command not extracted** - XES files embed command in "Sample description" field
+2. **No data validation** - Scan type determined only from command, not verified against data
+3. **No XANES detection** - Would misidentify XANES as XES
 
-**Problem**: 
-`delimiter=None` with `genfromtxt` uses any whitespace as delimiter, which may not match beamline format.
+**Solution Implemented** (Oct 30, 2025):
+1. Enhanced command extraction to handle both formats
+2. Added `validate_scan_type_from_data()` function
+3. Data-based validation with 0.5 eV threshold
+4. XANES detection and clear rejection
 
-**Investigation Needed**:
-1. **Get example beamline ASCII file** - Need actual file to understand format
-2. Possible beamline formats:
-   - Tab-delimited with metadata header
-   - Fixed-width columns
-   - Multiple header lines without # comment markers
-   - Non-numeric metadata mixed with data
-   - European number format (comma as decimal separator)
+**Test Results** (Oct 30, 2025):
+✅ All 4 XES test files load successfully (ZnO_standard_*.dat)
+✅ RXES file still loads correctly (no regression)
+✅ XANES data correctly rejected with clear error message
+✅ Command/data mismatches trigger warnings
+✅ NeXus files still work (no regressions)
 
-**Potential Solution**:
-```python
-def xes_from_ascii(path: str) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    ASCII two-column XES with robust parsing for beamline formats.
-    """
-    # Try multiple parsing strategies
-    strategies = [
-        lambda: np.genfromtxt(path, comments="#", delimiter=None, dtype=float),
-        lambda: np.genfromtxt(path, comments="#", delimiter="\t", dtype=float),
-        lambda: np.genfromtxt(path, comments="#", delimiter=",", dtype=float),
-        lambda: np.loadtxt(path, comments=("#", "!"), dtype=float),
-        lambda: pd.read_csv(path, comment="#", sep=r"\s+", header=None).values,
-    ]
-    
-    for strategy in strategies:
-        try:
-            data = strategy()
-            data = np.atleast_2d(data)
-            if data.shape[1] >= 2:
-                x, y = data[:, 0], data[:, 1]
-                ok = np.isfinite(x) & np.isfinite(y)
-                if ok.sum() > 0:
-                    return x[ok], y[ok]
-        except Exception:
-            continue
-    
-    raise ValueError(f"Could not parse ASCII file: {path}")
-```
-
-**Action Items**:
-1. Request example beamline ASCII file from user
-2. Examine file format manually
-3. Implement appropriate parser
-4. Add unit tests with example files
+**Three Scan Types Now Handled**:
+1. **RXES** - Both Bragg and Emission vary → 2D map (supported)
+2. **XES** - Emission varies, Bragg fixed → 1D spectrum (supported)
+3. **XANES** - Bragg varies, Emission fixed → NOT SUPPORTED (rejected with clear error)
 
 ---
 
