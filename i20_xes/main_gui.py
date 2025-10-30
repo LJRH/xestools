@@ -285,24 +285,58 @@ class MainWindow(QMainWindow):
 
     # ---------------- Load dispatcher ----------------
     def on_load(self):
-        choices = ["RXES scan (.nxs, .dat)", "XES spectra (.nxs, .dat)"]
-        choice, ok = QInputDialog.getItem(self, "Load I20 Data", "Map or 1D Emission?", choices, 0, False)
-        if not ok:
-            return
-        if choice.startswith("RXES"):
-            self._load_rxes_scan()
-        else:
-            self.on_xes_load_scans()
-    def _load_rxes_scan(self):
+        """Load I20 data with automatic scan type detection."""
         filters = [
-            "RXES scans (*.nxs *.h5 *.hdf *.hdf5 *.dat *.txt *.csv)",
+            "I20 data (*.nxs *.h5 *.hdf *.hdf5 *.dat *.txt *.csv)",
             "NeXus (*.nxs *.h5 *.hdf *.hdf5)",
             "ASCII (*.dat *.txt *.csv)",
             "All files (*)"
         ]
-        path, _ = QFileDialog.getOpenFileName(self, "Load RXES scan", "", ";;".join(filters))
-        if not path:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Load I20 Data", "", ";;".join(filters)
+        )
+        if not paths:
             return
+        
+        # Multiple files → XES workflow (batch loading)
+        if len(paths) > 1:
+            self._load_xes_batch(paths)
+            return
+        
+        # Single file → auto-detect
+        self._load_auto_detect(paths[0])
+
+    def _load_auto_detect(self, path):
+        """Load single file with automatic scan type detection."""
+        try:
+            # Auto-detect scan type from file
+            scan_type = i20_loader.detect_scan_type_from_file(path)
+            
+            # Route to appropriate loader
+            if scan_type == 'RXES':
+                self._load_rxes_single(path)
+                self.status.showMessage(
+                    f"Auto-detected RXES (2D map): {os.path.basename(path)}", 
+                    5000
+                )
+            elif scan_type == 'XES':
+                self._load_xes_batch([path])
+                self.status.showMessage(
+                    f"Auto-detected XES (1D spectrum): {os.path.basename(path)}", 
+                    5000
+                )
+            else:
+                raise ValueError(f"Unknown scan type: {scan_type}")
+                
+        except ValueError as e:
+            # XANES or detection failure
+            QMessageBox.critical(
+                self, "Cannot load file",
+                f"Auto-detection failed for:\n{path}\n\n{e}\n\n"
+                f"Tip: Use XES panel 'Load Scans...' to force XES loading."
+            )
+    def _load_rxes_single(self, path):
+        """Load single file as RXES (2D map). Path already selected."""
         try:
             ext = os.path.splitext(path)[1].lower()
             
@@ -456,17 +490,9 @@ class MainWindow(QMainWindow):
         self.update_ui_state()
 
     # ---------------- XES: multi-scan workflow - Load, Plot and Average ----------------
-    def on_xes_load_scans(self):
-        filters = [
-            "XES spectrum (*.nxs *.h5 *.hdf *.hdf5 *.txt *.dat *.csv)",
-            "NeXus/HDF5 (*.nxs *.h5 *.hdf *.hdf5)",
-            "ASCII (*.txt *.dat *.csv)",
-            "All files (*)"
-        ]
-        paths, _ = QFileDialog.getOpenFileNames(self, "Load XES scans", "", ";;".join(filters))
-        if not paths:
-            return
-
+    def _load_xes_batch(self, paths):
+        """Load files as XES (1D spectra, batch mode). Paths already selected."""
+        
         ui_channel = "upper" if self.xes_panel.rb_upper.isChecked() else "lower"
 
         added = 0
@@ -554,6 +580,20 @@ class MainWindow(QMainWindow):
             if hasattr(self, "_update_xes_buttons"):
                 self._update_xes_buttons()
             self.status.showMessage(f"Loaded {added} XES scan(s)", 5000)
+
+    def on_xes_load_scans(self):
+        """XES panel: Load multiple scans (explicit XES loading)."""
+        filters = [
+            "XES spectrum (*.nxs *.h5 *.hdf *.hdf5 *.txt *.dat *.csv)",
+            "NeXus/HDF5 (*.nxs *.h5 *.hdf *.hdf5)",
+            "ASCII (*.txt *.dat *.csv)",
+            "All files (*)"
+        ]
+        paths, _ = QFileDialog.getOpenFileNames(self, "Load XES scans", "", ";;".join(filters))
+        if not paths:
+            return
+        
+        self._load_xes_batch(paths)
     def on_xes_remove_selected(self):
         selected_rows = sorted({i.row() for i in self.xes_panel.list.selectedIndexes()}, reverse=True)
         for r in selected_rows:

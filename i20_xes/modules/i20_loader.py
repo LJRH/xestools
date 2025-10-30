@@ -801,6 +801,78 @@ def validate_scan_type_from_data(
     
     return actual_type
 
+def detect_scan_type_from_file(path: str) -> str:
+    """
+    Auto-detect scan type from any I20 file (NeXus or ASCII).
+    
+    Uses data-based validation to determine if file contains:
+    - RXES: Both bragg and emission vary (2D scan)
+    - XES: Emission varies, bragg fixed (1D scan)
+    - XANES: Bragg varies, emission fixed (NOT SUPPORTED)
+    
+    Args:
+        path: Path to NeXus or ASCII file
+    
+    Returns:
+        'RXES' or 'XES'
+    
+    Raises:
+        ValueError: If XANES detected or detection fails
+    
+    Example:
+        >>> scan_type = detect_scan_type_from_file('scan.nxs')
+        >>> # 'RXES' or 'XES'
+    """
+    ext = os.path.splitext(path)[1].lower()
+    
+    # ASCII: Use existing metadata parser (already includes validation)
+    if ext in ('.dat', '.txt', '.csv'):
+        metadata = parse_i20_ascii_metadata(path)
+        return metadata['scan_type']  # Already validated with data
+    
+    # NeXus: Read arrays and analyze
+    elif ext in ('.nxs', '.h5', '.hdf', '.hdf5'):
+        if not H5_AVAILABLE:
+            raise RuntimeError("h5py required for NeXus files")
+        
+        with h5py.File(path, 'r') as f:
+            # Get bragg array
+            try:
+                bragg = f['/entry1/I1/bragg1WithOffset'][...]
+            except Exception:
+                raise ValueError("bragg1WithOffset not found in NeXus file")
+            
+            # Try to get emission array (upper or lower)
+            emission = None
+            for key in ['/entry1/I1/XESEnergyUpper', 
+                       '/entry1/I1/XESEnergyLower']:
+                try:
+                    emission = f[key][...]
+                    break
+                except:
+                    pass
+            
+            if emission is None:
+                raise ValueError(
+                    "No XESEnergy array found. "
+                    "File may be XANES or invalid."
+                )
+            
+            # Flatten arrays (handle both 1D and 2D)
+            bragg = np.asarray(bragg, dtype=float).ravel()
+            emission = np.asarray(emission, dtype=float).ravel()
+            
+            # Use data-based validation
+            return validate_scan_type_from_data(
+                bragg=bragg,
+                emission=emission,
+                command_scan_type=None,
+                threshold=0.5
+            )
+    
+    else:
+        raise ValueError(f"Unsupported file type: {ext}")
+
 def load_i20_ascii_data(path: str, metadata: dict) -> np.ndarray:
     """
     Load numeric data from I20 ASCII file.
