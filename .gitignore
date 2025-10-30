@@ -10,3 +10,6 @@ __pycache__/
 *.py[cod]
 
 i20xes.sif
+
+# Ignore debug logs
+logs/**
