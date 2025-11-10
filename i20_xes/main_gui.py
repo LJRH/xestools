@@ -19,12 +19,30 @@ from PySide6.QtWidgets import (
 from i20_xes.modules.dataset import DataSet
 from i20_xes.widgets.io_panel import IOPanel, RXESPanel
 from i20_xes.widgets.xes_panel import XESPanel, SPECIAL_ROLE # SPECIAL ROLE to help known which boxes are ticked at a given time.
-from i20_xes.widgets.plot_widget import PlotWidget
 from i20_xes.widgets.normalise_dialog import NormaliseDialog
 from i20_xes.widgets.background_dialog import BackgroundDialog
 from i20_xes.modules import io as io_mod
 from i20_xes.modules.scan import Scan
 from i20_xes.modules import i20_loader
+
+# ==================== FEATURE FLAG: Silx Integration ====================
+# Set to True to use silx-based plotting (professional synchrotron tools)
+# Set to False to use matplotlib-based plotting (legacy)
+USE_SILX = True
+# =========================================================================
+
+# Conditional import based on feature flag
+if USE_SILX:
+    try:
+        from i20_xes.widgets.silx_plot_widget import SilxPlotWidget as PlotWidget
+        logger.info("Using silx-based plotting (professional mode)")
+    except ImportError as e:
+        logger.warning(f"Failed to import silx, falling back to matplotlib: {e}")
+        from i20_xes.widgets.plot_widget import PlotWidget
+        USE_SILX = False
+else:
+    from i20_xes.widgets.plot_widget import PlotWidget
+    logger.info("Using matplotlib-based plotting (legacy mode)")
 
 # special keys (use these exact strings everywhere)
 AVG_KEY = "average"

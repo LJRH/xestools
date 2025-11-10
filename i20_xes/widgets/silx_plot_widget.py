@@ -419,6 +419,23 @@ class SilxPlotWidget(QWidget):
         
         logger.info("XES bundle plotted")
     
+    def autoscale_current(self):
+        """
+        Autoscale/reset zoom (compatibility method).
+        
+        Silx manages this automatically with its toolbar.
+        """
+        logger.debug("autoscale_current called (no-op for silx)")
+        # Silx ImageView has built-in reset zoom button
+        # Could call self.imageView.resetZoom() if needed
+        pass
+    
+    def clear_profiles(self):
+        """Clear profile plot (compatibility method)."""
+        logger.debug("Clearing profiles")
+        self.profilePlot.clear()
+        self.profilePlot.replot()
+    
     # ==================== Internal Methods ====================
     
     def _plot_2d_dataset(self, dataset: DataSet):
