@@ -15,8 +15,8 @@ Usage:
 import sys
 import numpy as np
 from PySide6.QtWidgets import QApplication
-from i20_xes.widgets.silx_plot_widget import SilxPlotWidget
-from i20_xes.modules.dataset import DataSet
+from xestools.widgets.silx_plot_widget import SilxPlotWidget
+from xestools.modules.dataset import DataSet
 
 def create_test_rxes_data():
     """Create synthetic RXES data for testing."""

@@ -4,13 +4,13 @@
 import sys
 sys.path.insert(0, '..')
 
-from i20_xes.modules import i20_loader
-from i20_xes.modules.scan import Scan
-from i20_xes.modules.cli_export import scan_to_dataframe
+from xestools.modules import i20_loader
+from xestools.modules.scan import Scan
+from xestools.modules.cli_export import scan_to_dataframe
 
 # Load RXES scan
 scan = Scan()
-snum = i20_loader.add_scan_from_nxs(scan, '../i20_xes/data/rxes/279517_1.nxs')
+snum = i20_loader.add_scan_from_nxs(scan, '../xestools/data/rxes/279517_1.nxs')
 
 # Export to DataFrame
 df = scan_to_dataframe(scan, snum, channel='upper')

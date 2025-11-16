@@ -1,4 +1,4 @@
-# I20 XES/RXES Viewer
+# XESTools - I20 XES/RXES Viewer
 
 A lightweight PySide6 GUI to load, view, and process Diamond I20 RXES maps and XES spectra. It supports viewing RXES maps in incident or energy-loss mode, mutliple RXES cuts, multi-scan XES averaging, area-based normalisation, LMFIT-based background extraction of XES, and exporting results as CSV or NeXus.
 
@@ -68,9 +68,9 @@ A build script is a work in progress. A singularity file exists.
 Export data for advanced analysis with pandas, xarray, or other tools:
 
 ```python
-from i20_xes.modules import i20_loader
-from i20_xes.modules.scan import Scan
-from i20_xes.modules.cli_export import scan_to_dataframe
+from xestools.modules import i20_loader
+from xestools.modules.scan import Scan
+from xestools.modules.cli_export import scan_to_dataframe
 
 # Load data
 scan = Scan()
@@ -139,11 +139,11 @@ pip install xarray  # Optional, for xarray/NetCDF
 
 ## Project structure (high level)
 
-- i20_xes/modules
+- xestools/modules
   - loader (i20_loader): RXES/XES readers, axis reduction
   - io: ASCII/NeXus save helpers
   - scan: in-memory Scan container
-- i20_xes/widgets
+- xestools/widgets
   - panels: IOPanel, RXESPanel, XESPanel
   - dialogs: NormaliseDialog, BackgroundDialog
   - PlotWidget: 1D/2D plotting and ROI tools

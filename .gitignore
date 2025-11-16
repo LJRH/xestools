@@ -13,3 +13,6 @@ i20xes.sif
 
 # Ignore debug logs
 logs/**
+
+# OpenCode session documentation (local only)
+docs/opencode_sessions/

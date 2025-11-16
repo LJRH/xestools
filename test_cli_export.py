@@ -4,9 +4,9 @@
 import sys
 sys.path.insert(0, '.')
 
-from i20_xes.modules import i20_loader
-from i20_xes.modules.scan import Scan
-from i20_xes.modules.cli_export import (
+from xestools.modules import i20_loader
+from xestools.modules.scan import Scan
+from xestools.modules.cli_export import (
     scan_to_dataframe,
     scan_to_xarray,
     export_scan_to_hdf5,
@@ -19,7 +19,7 @@ print("=" * 70)
 # Test 1: RXES to DataFrame
 print("\n1. RXES → DataFrame")
 scan = Scan()
-snum = i20_loader.add_scan_from_nxs(scan, 'i20_xes/data/rxes/279517_1.nxs')
+snum = i20_loader.add_scan_from_nxs(scan, 'xestools/data/rxes/279517_1.nxs')
 df = scan_to_dataframe(scan, snum, channel='upper')
 print(f"   ✓ Shape: {df.shape}")
 print(f"   ✓ Columns: {list(df.columns)}")
@@ -33,7 +33,7 @@ print("   ✓ PASSED")
 print("\n2. XES (ASCII) → DataFrame")
 scan2 = Scan()
 snum2 = i20_loader.add_scan_from_i20_ascii(
-    scan2, 'i20_xes/data/vtc/ZnO_standard_280754_1.dat'
+    scan2, 'xestools/data/vtc/ZnO_standard_280754_1.dat'
 )
 df2 = scan_to_dataframe(scan2, snum2)
 print(f"   ✓ Shape: {df2.shape}")

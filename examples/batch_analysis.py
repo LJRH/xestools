@@ -5,13 +5,13 @@ import sys
 sys.path.insert(0, '..')
 
 from pathlib import Path
-from i20_xes.modules import i20_loader
-from i20_xes.modules.scan import Scan
-from i20_xes.modules.cli_export import scan_to_dataframe
+from xestools.modules import i20_loader
+from xestools.modules.scan import Scan
+from xestools.modules.cli_export import scan_to_dataframe
 import pandas as pd
 
 # Find all .nxs files
-files = list(Path('../i20_xes/data/vtc').glob('*.nxs'))
+files = list(Path('../xestools/data/vtc').glob('*.nxs'))
 
 # Process each
 all_data = []
