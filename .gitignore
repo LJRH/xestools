@@ -13,6 +13,9 @@ i20xes.sif
 
 # Ignore debug logs
 logs/**
+docs/**
 
 # OpenCode session documentation (local only)
 docs/opencode_sessions/
+
+uv.lock
