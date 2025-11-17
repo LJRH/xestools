@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-RXES/RIXS Plot Widgets
+RXES/RXES Plot Widgets
 =======================
 
 Professional silx-based plot widgets for RXES (Resonant X-ray Emission Spectroscopy)
-and RIXS (Resonant Inelastic X-ray Scattering) visualization.
+and RXES (Resonant Inelastic X-ray Scattering) visualization.
 
 This module provides:
-- XESRixsPlot2D: Enhanced 2D plot for RXES maps with profile extraction
+- XESRxesPlot2D: Enhanced 2D plot for RXES maps with profile extraction
 - XESPlotArea: MDI area for multiple plots with shared profile window
 - XESROIDockWidget: ROI management panel
 
-Based on the xraylarch/qtrixs implementation by Newville et al., adapted for
+Based on the xraylarch/qtrxes implementation by Newville et al., adapted for
 I20 beamline XES/RXES data at Diamond Light Source.
 
 Author: Luke Higgins / OpenCode Assistant
@@ -34,9 +34,9 @@ from .profile_toolbar import XESProfileToolBar, DEFAULT_OVERLAY_COLORS, XESROIMa
 logger = logging.getLogger(__name__)
 
 
-class XESRixsPlot2D(Plot2D):
+class XESRxesPlot2D(Plot2D):
     """
-    RXES/RIXS-specific 2D plot widget with integrated profile extraction.
+    RXES/RXES-specific 2D plot widget with integrated profile extraction.
     
     This widget extends silx's Plot2D to provide specialized features for
     synchrotron RXES data:
@@ -97,7 +97,7 @@ class XESRixsPlot2D(Plot2D):
         # Replace default profile toolbar with our enhanced version
         self._setupProfileToolbar()
         
-        self._logger.info(f"XESRixsPlot2D initialized: {title}")
+        self._logger.info(f"XESRxesPlot2D initialized: {title}")
     
     def _configureToolbar(self):
         """
@@ -363,7 +363,7 @@ class XESPlotArea(qt.QMdiArea):
     """
     MDI (Multiple Document Interface) area for RXES plot windows.
     
-    This container manages multiple XESRixsPlot2D windows with a shared
+    This container manages multiple XESRxesPlot2D windows with a shared
     profile display. It allows users to compare different RXES maps
     side-by-side while viewing extracted profiles in a common window.
     
@@ -461,7 +461,7 @@ class XESPlotArea(qt.QMdiArea):
         
         menu.exec_(self.mapToGlobal(position))
     
-    def addRixsPlot2D(self, profileWindow: Any = None) -> XESRixsPlot2D:
+    def addRixsPlot2D(self, profileWindow: Any = None) -> XESRxesPlot2D:
         """
         Add a new RXES 2D plot window to the MDI area.
         
@@ -469,14 +469,14 @@ class XESPlotArea(qt.QMdiArea):
             profileWindow: Custom profile window (uses shared if None)
             
         Returns:
-            The newly created XESRixsPlot2D instance
+            The newly created XESRxesPlot2D instance
         """
         subWindow = qt.QMdiSubWindow(parent=self)
         
         # Use shared profile window unless specified
         pw = profileWindow or self._profileWindow
         
-        plotWindow = XESRixsPlot2D(
+        plotWindow = XESRxesPlot2D(
             parent=subWindow,
             profileWindow=pw,
             overlayColors=self._overlayColors
@@ -494,21 +494,21 @@ class XESPlotArea(qt.QMdiArea):
         
         return plotWindow
     
-    def plotWindows(self) -> List[XESRixsPlot2D]:
+    def plotWindows(self) -> List[XESRxesPlot2D]:
         """
         Get list of all RXES plot windows.
         
         Returns:
-            List of XESRixsPlot2D instances
+            List of XESRxesPlot2D instances
         """
         windows = []
         for subWindow in self.subWindowList():
             widget = subWindow.widget()
-            if isinstance(widget, XESRixsPlot2D):
+            if isinstance(widget, XESRxesPlot2D):
                 windows.append(widget)
         return windows
     
-    def getPlotWindow(self, index: int) -> Optional[XESRixsPlot2D]:
+    def getPlotWindow(self, index: int) -> Optional[XESRxesPlot2D]:
         """
         Get a specific plot window by index.
         
@@ -516,7 +516,7 @@ class XESPlotArea(qt.QMdiArea):
             index: Window index (0-based)
             
         Returns:
-            XESRixsPlot2D instance or None if index out of range
+            XESRxesPlot2D instance or None if index out of range
         """
         windows = self.plotWindows()
         if 0 <= index < len(windows):
@@ -547,16 +547,16 @@ class XESROIDockWidget(qt.QDockWidget):
     - Automatic cleanup when hidden
     """
     
-    def __init__(self, plot: XESRixsPlot2D, parent: Any = None):
+    def __init__(self, plot: XESRxesPlot2D, parent: Any = None):
         """
         Initialize the ROI dock widget.
         
         Args:
-            plot: XESRixsPlot2D instance to manage ROIs for
+            plot: XESRxesPlot2D instance to manage ROIs for
             parent: Parent QMainWindow
         """
-        if not isinstance(plot, XESRixsPlot2D):
-            raise TypeError("'plot' must be an instance of XESRixsPlot2D")
+        if not isinstance(plot, XESRxesPlot2D):
+            raise TypeError("'plot' must be an instance of XESRxesPlot2D")
         
         title = f"ROI Manager - Plot {plot.getIndex() + 1}"
         super().__init__(title, parent=parent)

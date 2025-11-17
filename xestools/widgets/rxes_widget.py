@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-RIXS Widget - Main Visualization Widget
+RXES Widget - Main Visualization Widget
 ========================================
 
 A complete RXES/RIXS visualization widget that integrates:
-- XESRixsPlot2D for 2D map display
+- XESRxesPlot2D for 2D map display
 - Profile window for extracted line cuts
 - Built-in silx profile extraction tools
 - Energy transfer mode switching
@@ -28,13 +28,13 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QStatusBar
 from silx.gui.plot import Plot1D
 from silx.gui.plot.tools.profile.manager import ProfileWindow
 
-from .rixs_plot import XESRixsPlot2D
+from .rxes_plot import XESRxesPlot2D
 from xestools.modules.dataset import DataSet
 
 logger = logging.getLogger(__name__)
 
 
-class RIXSWidget(QWidget):
+class RXESWidget(QWidget):
     """
     Comprehensive RXES/RIXS visualization widget.
     
@@ -46,7 +46,7 @@ class RIXSWidget(QWidget):
     - Integration with xestools DataSet objects
     
     The widget uses a vertical splitter layout:
-    - Top: 2D RXES map (XESRixsPlot2D)
+    - Top: 2D RXES map (XESRxesPlot2D)
     - Bottom: 1D profile plot (Plot1D)
     
     Signals:
@@ -62,7 +62,7 @@ class RIXSWidget(QWidget):
     
     def __init__(self, parent: Any = None):
         """
-        Initialize the RIXS widget.
+        Initialize the RXES widget.
         
         Args:
             parent: Parent QWidget (typically MainWindow)
@@ -74,14 +74,14 @@ class RIXSWidget(QWidget):
         
         self._setup_ui()
         
-        logger.info("RIXSWidget initialized")
+        logger.info("RXESWidget initialized")
     
     def _setup_ui(self):
         """
         Create the UI layout with RXES plot.
         
         Layout:
-        - Single XESRixsPlot2D widget that fills the entire area
+        - Single XESRxesPlot2D widget that fills the entire area
         - Profile extraction is handled by the built-in silx profile toolbar
         - Profiles appear in a separate window managed by silx
         
@@ -93,7 +93,7 @@ class RIXSWidget(QWidget):
         
         # Create 2D RXES plot (profile window will be created internally by silx)
         # The profile toolbar will manage its own profile display window
-        self.rxesPlot = XESRixsPlot2D(
+        self.rxesPlot = XESRxesPlot2D(
             parent=self,
             profileWindow=None,  # Let silx manage the profile window
             title="RXES Map"
@@ -105,7 +105,7 @@ class RIXSWidget(QWidget):
         # Keep profilePlot reference for backward compatibility (points to silx-managed window)
         self.profilePlot = self.rxesPlot.getProfileWindow()
         
-        logger.debug("RIXS widget UI setup complete (single plot, no splitter)")
+        logger.debug("RXES widget UI setup complete (single plot, no splitter)")
     
     def plot(self, dataset: Optional[DataSet]):
         """
@@ -240,7 +240,7 @@ class RIXSWidget(QWidget):
         if self._is_closing:
             return
         
-        logger.debug("Clearing RIXS widget")
+        logger.debug("Clearing RXES widget")
         
         # Clear 2D plot
         self.rxesPlot.clear()
@@ -283,12 +283,12 @@ class RIXSWidget(QWidget):
         """
         return self.rxesPlot.profile
     
-    def get2DPlot(self) -> XESRixsPlot2D:
+    def get2DPlot(self) -> XESRxesPlot2D:
         """
         Get the 2D RXES plot widget.
         
         Returns:
-            XESRixsPlot2D instance
+            XESRxesPlot2D instance
         """
         return self.rxesPlot
     
@@ -402,7 +402,7 @@ class RIXSWidget(QWidget):
         Args:
             event: QCloseEvent
         """
-        logger.info("RIXSWidget closing")
+        logger.info("RXESWidget closing")
         
         try:
             self._is_closing = True

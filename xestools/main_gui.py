@@ -26,44 +26,11 @@ from xestools.modules import io as io_mod
 from xestools.modules.scan import Scan
 from xestools.modules import i20_loader
 
-# ==================== FEATURE FLAG: Silx Integration ====================
-# Set to True to use silx-based plotting (professional synchrotron tools)
-# Set to False to use matplotlib-based plotting (legacy)
-USE_SILX = True
-
-# Set to True to use new RIXS-style Plot2D with built-in profile extraction
-# Set to False to use wrapped ImageView with manual ROI lines
-USE_RIXS_PLOT = True
-# =========================================================================
-
-# Conditional import based on feature flag
-if USE_SILX:
-    if USE_RIXS_PLOT:
-        try:
-            from xestools.widgets.rixs_widget import RIXSWidget as PlotWidget
-            logger.info("Using RIXS-style Plot2D with profile toolbar (xraylarch style)")
-        except ImportError as e:
-            logger.warning(f"Failed to import RIXSWidget, falling back to SilxPlotWidget: {e}")
-            try:
-                from xestools.widgets.silx_plot_widget import SilxPlotWidget as PlotWidget
-                logger.info("Using silx-based plotting (professional mode)")
-                USE_RIXS_PLOT = False
-            except ImportError as e2:
-                logger.warning(f"Failed to import silx, falling back to matplotlib: {e2}")
-                from xestools.widgets.plot_widget import PlotWidget
-                USE_SILX = False
-                USE_RIXS_PLOT = False
-    else:
-        try:
-            from xestools.widgets.silx_plot_widget import SilxPlotWidget as PlotWidget
-            logger.info("Using silx-based plotting (professional mode)")
-        except ImportError as e:
-            logger.warning(f"Failed to import silx, falling back to matplotlib: {e}")
-            from xestools.widgets.plot_widget import PlotWidget
-            USE_SILX = False
-else:
-    from xestools.widgets.plot_widget import PlotWidget
-    logger.info("Using matplotlib-based plotting (legacy mode)")
+# ==================== RXES Widget Import ====================
+# Using silx-based RXES plotting (professional synchrotron tools)
+from xestools.widgets.rxes_widget import RXESWidget as PlotWidget
+logger.info("Using RXES-style Plot2D with profile toolbar")
+# =============================================================
 
 # special keys (use these exact strings everywhere)
 AVG_KEY = "average"
@@ -134,7 +101,7 @@ class MainWindow(QMainWindow):
         self.plot_stack = QStackedWidget()
         
         # RXES plot (2D) - index 0
-        self.plot = PlotWidget()  # This is RIXSWidget for 2D RXES maps
+        self.plot = PlotWidget()  # This is RXESWidget for 2D RXES maps
         self.plot_stack.addWidget(self.plot)
         
         # XES plot (1D) - index 1  
@@ -147,6 +114,13 @@ class MainWindow(QMainWindow):
         positionInfo = self.xes_plot.getPositionInfoWidget()
         if positionInfo is not None:
             positionInfo.setSnappingMode(positionInfo.SNAPPING_CURVE)
+        # Enable fitting toolbar for 1D XES analysis
+        try:
+            fitAction = self.xes_plot.getFitAction()
+            fitAction.setVisible(True)
+            logger.info("Fitting toolbar enabled for XES Plot1D")
+        except Exception as e:
+            logger.warning(f"Failed to enable fitting toolbar: {e}")
         self.plot_stack.addWidget(self.xes_plot)
         
         # Store weak reference for cleanup tracking
@@ -158,7 +132,7 @@ class MainWindow(QMainWindow):
                 # Old SilxPlotWidget/PlotWidget style
                 self.plot.lines_changed.connect(self.update_profiles)
             if hasattr(self.plot, 'profile_extracted'):
-                # New RIXSWidget style - profiles are extracted via toolbar
+                # New RXESWidget style - profiles are extracted via toolbar
                 self.plot.profile_extracted.connect(self._on_profile_extracted)
         except Exception as e:
             logger.warning(f"Failed to connect plot signals: {e}")
@@ -185,26 +159,13 @@ class MainWindow(QMainWindow):
         self.rxes_panel.chk_contour_labels.toggled.connect(self.on_contours_toggled)
         self.rxes_panel.btn_load_xes.clicked.connect(self.on_rxes_normalise)
         
-        # ROI extraction controls - only needed for old plot widget
-        if not USE_RIXS_PLOT:
-            # Old style: manual ROI line management
-            self.rxes_panel.btn_add_line.clicked.connect(self.on_add_line)
-            self.rxes_panel.btn_remove_line.clicked.connect(self.on_remove_line)
-            self.rxes_panel.btn_update_spectrum.clicked.connect(self.on_update_spectrum)
-            self.rxes_panel.btn_save_spectrum.clicked.connect(self.on_save_spectrum)
-            self.rxes_panel.sl_width.valueChanged.connect(self.on_bandwidth_changed)
-            self.rxes_panel.rb_extr_incident.toggled.connect(self.on_extraction_changed)
-            self.rxes_panel.rb_extr_emission.toggled.connect(self.on_extraction_changed)
-            self.rxes_panel.rb_extr_transfer.toggled.connect(self.on_extraction_changed)
-        else:
-            # New RIXS style: hide obsolete ROI controls (profile toolbar handles this)
-            # Hide the entire ROI Extraction groupbox
-            for i in range(self.rxes_panel.layout().count()):
-                widget = self.rxes_panel.layout().itemAt(i).widget()
-                if widget and isinstance(widget, QGroupBox) and widget.title() == "ROI Extraction":
-                    widget.setVisible(False)
-                    logger.info("ROI Extraction panel hidden (using silx profile toolbar instead)")
-                    break
+        # Hide obsolete ROI controls (silx profile toolbar handles this)
+        for i in range(self.rxes_panel.layout().count()):
+            widget = self.rxes_panel.layout().itemAt(i).widget()
+            if widget and isinstance(widget, QGroupBox) and widget.title() == "ROI Extraction":
+                widget.setVisible(False)
+                logger.info("ROI Extraction panel hidden (using silx profile toolbar instead)")
+                break
 
         # XES controls
         self.xes_panel.btn_load_scans.clicked.connect(self.on_xes_load_scans)
@@ -337,12 +298,6 @@ class MainWindow(QMainWindow):
             self.io_panel.info_label.setText("No data loaded")
 
         incident_mode = self.rxes_panel.rb_mode_incident.isChecked()
-        
-        # Only update extraction mode controls if not using new RIXS widget
-        if not USE_RIXS_PLOT:
-            self.rxes_panel.rb_extr_incident.setEnabled(True)
-            self.rxes_panel.rb_extr_emission.setEnabled(incident_mode)
-            self.rxes_panel.rb_extr_transfer.setEnabled(not incident_mode)
 
         if self.tabs.currentIndex() == 1 or (self.dataset and self.dataset.kind == "1D"):
             chan = "Upper" if self.xes_panel.rb_upper.isChecked() else "Lower"
@@ -524,13 +479,6 @@ class MainWindow(QMainWindow):
     def on_mode_changed(self):
         incident_mode = self.rxes_panel.rb_mode_incident.isChecked()
         
-        # Only manage extraction mode controls for old plot widget
-        if not USE_RIXS_PLOT:
-            if incident_mode and self.rxes_panel.rb_extr_transfer.isChecked():
-                self.rxes_panel.rb_extr_incident.setChecked(True)
-            if not incident_mode and self.rxes_panel.rb_extr_emission.isChecked():
-                self.rxes_panel.rb_extr_incident.setChecked(True)
-        
         self.refresh_rxes_view()
         try:
             self.plot.autoscale_current()
@@ -539,9 +487,6 @@ class MainWindow(QMainWindow):
     
     def on_contours_toggled(self, _=None):
         """Handle contour overlay toggle and level changes."""
-        if not USE_RIXS_PLOT:
-            return
-        
         show_contours = self.rxes_panel.chk_contours.isChecked()
         n_levels = self.rxes_panel.spn_contour_levels.value()
         color = self.rxes_panel.cmb_contour_color.currentText()
@@ -1639,7 +1584,7 @@ class MainWindow(QMainWindow):
 
     def _on_profile_extracted(self):
         """
-        Handler for profile extraction in new RIXSWidget.
+        Handler for profile extraction in new RXESWidget.
         
         In the new architecture, profiles are extracted via the silx profile
         toolbar directly. This handler is called when a profile is extracted
@@ -1663,14 +1608,13 @@ class MainWindow(QMainWindow):
         """
         Update profile extraction for old-style plot widget.
         
-        In the new RIXSWidget architecture, profile extraction is handled
-        automatically by the silx profile toolbar, so this method becomes
-        a no-op when USE_RIXS_PLOT is True.
+        In the new RXESWidget architecture, profile extraction is handled
+        automatically by the silx profile toolbar, so this method is
+        a no-op.
         """
-        # Skip for new RIXS widget - profiles handled by silx toolbar
-        if USE_RIXS_PLOT:
-            logger.debug("update_profiles skipped (using silx profile toolbar)")
-            return
+        # Profiles are now handled by silx toolbar
+        logger.debug("update_profiles skipped (using silx profile toolbar)")
+        return
         
         self._last_profiles = []
         if self.dataset is None or self.dataset.kind != "2D":
