@@ -1,0 +1,33 @@
+[project]
+name = "xestools"
+version = "0.1.0"
+description = "XESTools - A lightweight PySide6 GUI to load, view, and process Diamond I20 RXES maps and XES spectra"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyside6>=6.0",
+    "h5py>=3.0",
+    "numpy>=1.20",
+    "matplotlib>=3.0",
+    "silx>=2.2.2",
+    "pandas>=1.0",
+    "xarray>=0.19",
+    "lmfit>=1.0",
+]
+
+[project.optional-dependencies]
+export = [
+    "pandas>=1.0",
+    "xarray>=0.19",
+]
+fitting = [
+    "lmfit>=1.0",
+]
+all = [
+    "pandas>=1.0",
+    "xarray>=0.19",
+    "lmfit>=1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["xestools*"]

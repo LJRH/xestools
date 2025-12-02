@@ -1,0 +1,7 @@
+pyside6>=6.0
+h5py>=3.0
+numpy>=1.20
+matplotlib>=3.0
+pandas>=1.0
+xarray>=0.19
+lmfit>=1.0

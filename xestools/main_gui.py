@@ -13,22 +13,31 @@ if not logger.handlers:
 from PySide6.QtCore import Qt, QSignalBlocker
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QTabWidget,
-    QFileDialog, QMessageBox, QInputDialog, QDialog, QListWidgetItem
+    QFileDialog, QMessageBox, QInputDialog, QDialog, QListWidgetItem,
+    QGroupBox
 )
 
-from i20_xes.modules.dataset import DataSet
-from i20_xes.widgets.io_panel import IOPanel, RXESPanel
-from i20_xes.widgets.xes_panel import XESPanel, SPECIAL_ROLE # SPECIAL ROLE to help known which boxes are ticked at a given time.
-from i20_xes.widgets.plot_widget import PlotWidget
-from i20_xes.widgets.normalise_dialog import NormaliseDialog
-from i20_xes.widgets.background_dialog import BackgroundDialog
-from i20_xes.modules import io as io_mod
-from i20_xes.modules.scan import Scan
-from i20_xes.modules import i20_loader
+from xestools.modules.dataset import DataSet
+from xestools.widgets.io_panel import IOPanel, RXESPanel
+from xestools.widgets.xes_panel import XESPanel, SPECIAL_ROLE # SPECIAL ROLE to help known which boxes are ticked at a given time.
+from xestools.widgets.normalise_dialog import NormaliseDialog
+from xestools.widgets.background_dialog import BackgroundDialog
+from xestools.modules import io as io_mod
+from xestools.modules.scan import Scan
+from xestools.modules import i20_loader
+
+# ==================== RXES Widget Import ====================
+# Using silx-based RXES plotting (professional synchrotron tools)
+from xestools.widgets.rxes_widget import RXESWidget as PlotWidget
+logger.info("Using RXES-style Plot2D with profile toolbar")
+# =============================================================
 
 # special keys (use these exact strings everywhere)
 AVG_KEY = "average"
 BKSUB_KEY = "average_bksub"  # note: 'bksub' (no 'g')
+
+# Prefix for multiple averages (e.g., "average_279496+279517")
+MULTI_AVG_PREFIX = "average_"
 
 class MainWindow(QMainWindow):
     """Enhanced Main Window with comprehensive error handling, logging, and memory management."""
@@ -59,6 +68,10 @@ class MainWindow(QMainWindow):
         self._xes_norm_target = None  # ('avg', None) or ('single', index)
         self._xes_avg: Optional[Tuple[np.ndarray, np.ndarray]] = None
         self._xes_avg_norm_factor: Optional[float] = None
+        
+        # Multiple averages support: dict of key -> (x, y) tuples
+        # Keys are like "average_279496+279517" indicating which scans were averaged
+        self._xes_multi_avgs: dict = {}  # key -> (x_array, y_array)
 
         # Layout
         central = QWidget()
@@ -81,20 +94,51 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.tabs)
         left_layout.addStretch(1)
 
-        # Right: Enhanced Plot with error handling
-        self.plot = PlotWidget()
+        # Right: Plot area with stacked widgets for RXES (2D) and XES (1D)
+        from PySide6.QtWidgets import QStackedWidget
+        from silx.gui.plot import Plot1D
+        
+        self.plot_stack = QStackedWidget()
+        
+        # RXES plot (2D) - index 0
+        self.plot = PlotWidget()  # This is RXESWidget for 2D RXES maps
+        self.plot_stack.addWidget(self.plot)
+        
+        # XES plot (1D) - index 1  
+        self.xes_plot = Plot1D()
+        self.xes_plot.setGraphTitle("XES Spectra")
+        self.xes_plot.setGraphXLabel("Energy (eV)")
+        self.xes_plot.setGraphYLabel("Intensity")
+        self.xes_plot.setDataMargins(yMinMargin=0.1, yMaxMargin=0.1)
+        # Enable position info snapping to curves
+        positionInfo = self.xes_plot.getPositionInfoWidget()
+        if positionInfo is not None:
+            positionInfo.setSnappingMode(positionInfo.SNAPPING_CURVE)
+        # Enable fitting toolbar for 1D XES analysis
+        try:
+            fitAction = self.xes_plot.getFitAction()
+            fitAction.setVisible(True)
+            logger.info("Fitting toolbar enabled for XES Plot1D")
+        except Exception as e:
+            logger.warning(f"Failed to enable fitting toolbar: {e}")
+        self.plot_stack.addWidget(self.xes_plot)
         
         # Store weak reference for cleanup tracking
         self._plot_widget_ref = weakref.ref(self.plot)
         
         try:
+            # Connect plot signals based on widget type
             if hasattr(self.plot, 'lines_changed'):
+                # Old SilxPlotWidget/PlotWidget style
                 self.plot.lines_changed.connect(self.update_profiles)
+            if hasattr(self.plot, 'profile_extracted'):
+                # New RXESWidget style - profiles are extracted via toolbar
+                self.plot.profile_extracted.connect(self._on_profile_extracted)
         except Exception as e:
-            logger.warning(f"Failed to connect plot lines_changed signal: {e}")
+            logger.warning(f"Failed to connect plot signals: {e}")
 
         root_layout.addWidget(left_container, 0)
-        root_layout.addWidget(self.plot, 1)
+        root_layout.addWidget(self.plot_stack, 1)
 
         # I/O actions
         self.io_panel.btn_load.clicked.connect(self.on_load)
@@ -106,15 +150,22 @@ class MainWindow(QMainWindow):
         self.rxes_panel.rb_lower.toggled.connect(self.on_rxes_channel_changed)
         self.rxes_panel.rb_mode_incident.toggled.connect(self.on_mode_changed)
         self.rxes_panel.rb_mode_transfer.toggled.connect(self.on_mode_changed)
+        self.rxes_panel.chk_contours.toggled.connect(self.on_contours_toggled)
+        self.rxes_panel.spn_contour_levels.valueChanged.connect(self.on_contours_toggled)
+        self.rxes_panel.cmb_contour_color.currentTextChanged.connect(self.on_contours_toggled)
+        self.rxes_panel.spn_contour_width.valueChanged.connect(self.on_contours_toggled)
+        self.rxes_panel.chk_contour_fill.toggled.connect(self.on_contours_toggled)
+        self.rxes_panel.chk_contour_gravity.toggled.connect(self.on_contours_toggled)
+        self.rxes_panel.chk_contour_labels.toggled.connect(self.on_contours_toggled)
         self.rxes_panel.btn_load_xes.clicked.connect(self.on_rxes_normalise)
-        self.rxes_panel.btn_add_line.clicked.connect(self.on_add_line)
-        self.rxes_panel.btn_remove_line.clicked.connect(self.on_remove_line)
-        self.rxes_panel.btn_update_spectrum.clicked.connect(self.on_update_spectrum)
-        self.rxes_panel.btn_save_spectrum.clicked.connect(self.on_save_spectrum)
-        self.rxes_panel.sl_width.valueChanged.connect(self.on_bandwidth_changed)
-        self.rxes_panel.rb_extr_incident.toggled.connect(self.on_extraction_changed)
-        self.rxes_panel.rb_extr_emission.toggled.connect(self.on_extraction_changed)
-        self.rxes_panel.rb_extr_transfer.toggled.connect(self.on_extraction_changed)
+        
+        # Hide obsolete ROI controls (silx profile toolbar handles this)
+        for i in range(self.rxes_panel.layout().count()):
+            widget = self.rxes_panel.layout().itemAt(i).widget()
+            if widget and isinstance(widget, QGroupBox) and widget.title() == "ROI Extraction":
+                widget.setVisible(False)
+                logger.info("ROI Extraction panel hidden (using silx profile toolbar instead)")
+                break
 
         # XES controls
         self.xes_panel.btn_load_scans.clicked.connect(self.on_xes_load_scans)
@@ -247,9 +298,6 @@ class MainWindow(QMainWindow):
             self.io_panel.info_label.setText("No data loaded")
 
         incident_mode = self.rxes_panel.rb_mode_incident.isChecked()
-        self.rxes_panel.rb_extr_incident.setEnabled(True)
-        self.rxes_panel.rb_extr_emission.setEnabled(incident_mode)
-        self.rxes_panel.rb_extr_transfer.setEnabled(not incident_mode)
 
         if self.tabs.currentIndex() == 1 or (self.dataset and self.dataset.kind == "1D"):
             chan = "Upper" if self.xes_panel.rb_upper.isChecked() else "Lower"
@@ -430,15 +478,184 @@ class MainWindow(QMainWindow):
             pass
     def on_mode_changed(self):
         incident_mode = self.rxes_panel.rb_mode_incident.isChecked()
-        if incident_mode and self.rxes_panel.rb_extr_transfer.isChecked():
-            self.rxes_panel.rb_extr_incident.setChecked(True)
-        if not incident_mode and self.rxes_panel.rb_extr_emission.isChecked():
-            self.rxes_panel.rb_extr_incident.setChecked(True)
+        
         self.refresh_rxes_view()
         try:
             self.plot.autoscale_current()
         except Exception:
             pass
+    
+    def on_contours_toggled(self, _=None):
+        """Handle contour overlay toggle and level changes."""
+        show_contours = self.rxes_panel.chk_contours.isChecked()
+        n_levels = self.rxes_panel.spn_contour_levels.value()
+        color = self.rxes_panel.cmb_contour_color.currentText()
+        line_width = self.rxes_panel.spn_contour_width.value()
+        fill_islands = self.rxes_panel.chk_contour_fill.isChecked()
+        show_gravity = self.rxes_panel.chk_contour_gravity.isChecked()
+        show_labels = self.rxes_panel.chk_contour_labels.isChecked()
+        
+        if hasattr(self.plot, 'rxesPlot'):
+            if show_contours:
+                self._add_contours_to_plot(n_levels, color, line_width, fill_islands, show_gravity, show_labels)
+            else:
+                self._remove_contours_from_plot()
+    
+    def _add_contours_to_plot(self, n_levels: int = 10, color: str = 'white', line_width: float = 0.5,
+                               fill_islands: bool = False, show_gravity: bool = False, show_labels: bool = False):
+        """Add contour lines to the current RXES map using silx marchingsquares.
+        
+        Args:
+            n_levels: Number of contour levels
+            color: Color of contour lines (e.g., 'white', 'black', 'red')
+            line_width: Width of contour lines
+            fill_islands: Fill closed contour regions with semi-transparent color
+            show_gravity: Show gravity centers (centroids) of closed contours
+            show_labels: Label contours with their intensity values
+        """
+        if not hasattr(self.plot, 'rxesPlot'):
+            return
+        
+        # Get the current image
+        image = self.plot.rxesPlot.getImage("RXES")
+        if image is None:
+            return
+        
+        from silx.image import marchingsquares
+        
+        data = image.getData(copy=False)
+        origin = image.getOrigin()
+        scale = image.getScale()
+        
+        # Compute contour levels
+        vmin, vmax = np.nanmin(data), np.nanmax(data)
+        levels = np.linspace(vmin, vmax, n_levels + 2)[1:-1]  # Exclude min/max
+        
+        # Remove old contours first
+        self._remove_contours_from_plot()
+        
+        # Create contour lines using silx marchingsquares
+        try:
+            contour_count = 0
+            gravity_centers = []
+            label_positions = []
+            
+            for i, level in enumerate(levels):
+                # find_contours returns polygons in pixel coordinates
+                polygons = marchingsquares.find_contours(data, level)
+                
+                for j, polygon in enumerate(polygons):
+                    if len(polygon) > 1:
+                        # Convert pixel coordinates to data coordinates
+                        # polygon is (N, 2) array with (row, col) format
+                        pixel_y = polygon[:, 0]  # rows
+                        pixel_x = polygon[:, 1]  # columns
+                        
+                        # Apply scale and origin transformation
+                        data_x = origin[0] + pixel_x * scale[0]
+                        data_y = origin[1] + pixel_y * scale[1]
+                        
+                        # Check if polygon is closed (for island filling and gravity)
+                        is_closed = np.allclose(polygon[0], polygon[-1], atol=1.0)
+                        
+                        # Fill islands (closed polygons) with semi-transparent color
+                        if fill_islands and is_closed and len(data_x) > 2:
+                            # Create a fill using scatter with low alpha
+                            # Note: silx Plot2D doesn't have native polygon fill,
+                            # so we approximate with the contour line itself
+                            pass  # Would need custom Shape item for proper fill
+                        
+                        # Add contour line
+                        self.plot.rxesPlot.addCurve(
+                            data_x, data_y,
+                            legend=f"_contour_{i}_{j}",
+                            color=color,
+                            linewidth=line_width,
+                            linestyle='-',
+                            selectable=False
+                        )
+                        contour_count += 1
+                        
+                        # Calculate gravity center (centroid) for closed polygons
+                        if show_gravity and is_closed and len(data_x) > 2:
+                            centroid_x = np.mean(data_x)
+                            centroid_y = np.mean(data_y)
+                            gravity_centers.append((centroid_x, centroid_y, level))
+                        
+                        # Store label position (mid-point of contour)
+                        if show_labels and len(data_x) > 2:
+                            mid_idx = len(data_x) // 2
+                            label_positions.append((data_x[mid_idx], data_y[mid_idx], level))
+            
+            # Add gravity center markers
+            if show_gravity and gravity_centers:
+                gx = [g[0] for g in gravity_centers]
+                gy = [g[1] for g in gravity_centers]
+                self.plot.rxesPlot.addScatter(
+                    gx, gy,
+                    legend="_contour_gravity",
+                    symbol='o',
+                    colormap=None,
+                    value=[g[2] for g in gravity_centers]
+                )
+                logger.info(f"Added {len(gravity_centers)} gravity centers")
+            
+            # Add contour value labels
+            if show_labels and label_positions:
+                # Track marker names for cleanup
+                if not hasattr(self, '_contour_label_markers'):
+                    self._contour_label_markers = []
+                
+                # silx doesn't have native text annotation, but we can use markers
+                # For now, log the positions - would need custom text items
+                for lx, ly, lv in label_positions[:n_levels]:  # Limit to one per level
+                    # Add a small marker at label position
+                    marker_name = f"_contour_label_{lv:.2f}"
+                    self.plot.rxesPlot.addMarker(
+                        lx, ly,
+                        legend=marker_name,
+                        text=f"{lv:.3g}",
+                        color=color,
+                        symbol=None
+                    )
+                    self._contour_label_markers.append(marker_name)
+                logger.info(f"Added {min(len(label_positions), n_levels)} contour labels")
+            
+            logger.info(f"Added {contour_count} contour segments ({n_levels} levels, color={color}, width={line_width})")
+        except Exception as e:
+            logger.warning(f"Could not add contours: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _remove_contours_from_plot(self):
+        """Remove all contour lines, markers, and scatter plots from the plot."""
+        if not hasattr(self.plot, 'rxesPlot'):
+            return
+        
+        # Remove all curves that start with _contour_
+        curves = self.plot.rxesPlot.getAllCurves()
+        for curve in curves:
+            name = curve.getName()
+            if name.startswith("_contour_"):
+                self.plot.rxesPlot.remove(name, kind='curve')
+        
+        # Remove gravity center scatter plot
+        try:
+            self.plot.rxesPlot.remove("_contour_gravity", kind='scatter')
+        except Exception:
+            pass
+        
+        # Remove contour label markers (stored in _contour_label_markers list)
+        if hasattr(self, '_contour_label_markers'):
+            for marker_name in self._contour_label_markers:
+                try:
+                    self.plot.rxesPlot.removeMarker(marker_name)
+                except Exception:
+                    pass
+            self._contour_label_markers = []
+        
+        logger.debug("Removed contour overlays")
+    
     def on_extraction_changed(self, checked: bool):
         # Only react when a radio becomes checked; ignore the False uncheck event
         if not checked:
@@ -487,7 +704,19 @@ class MainWindow(QMainWindow):
             self.refresh_rxes_view()
         self.update_ui_state()
     def on_tab_changed(self, idx: int):
+        """Handle tab changes between RXES (index 0) and XES (index 1)."""
         self.update_ui_state()
+        
+        # Switch plot stack based on active tab
+        if hasattr(self, 'plot_stack'):
+            if idx == 0:
+                # RXES tab - show 2D plot
+                self.plot_stack.setCurrentIndex(0)
+            else:
+                # XES tab - show 1D plot
+                self.plot_stack.setCurrentIndex(1)
+                # Refresh XES plot when switching to XES tab
+                self._refresh_xes_plot()
 
     # ---------------- XES: multi-scan workflow - Load, Plot and Average ----------------
     def _load_xes_batch(self, paths):
@@ -696,6 +925,13 @@ class MainWindow(QMainWindow):
         self._update_xes_buttons()
         self._update_xes_channel_controls()
     def on_xes_average_selected(self):
+        """
+        Average the selected (ticked) XES scans.
+        
+        Creates a named average with a key like 'average_279496+279517' that
+        includes the scan numbers of the averaged scans. Multiple averages
+        can coexist in the list.
+        """
         idxs = self.xes_panel.checked_indices()
         idxs = [i for i in idxs if 0 <= i < len(self._xes_items)]
         if not idxs:
@@ -707,12 +943,35 @@ class MainWindow(QMainWindow):
         if xt.size == 0:
             QMessageBox.warning(self, "Average", "No overlapping domain found to average.")
             return
+        
+        # Generate a unique key based on scan numbers
+        scan_nums = []
+        for i in idxs:
+            item = self._xes_items[i]
+            # Extract scan number from path or label
+            label = item.get("label", "")
+            # Try to extract scan number from label (e.g., "279496_upper")
+            parts = label.split("_")
+            if parts and parts[0].isdigit():
+                scan_nums.append(parts[0])
+            else:
+                # Fallback: use index
+                scan_nums.append(str(i))
+        
+        # Create key like "average_279496+279517"
+        avg_key = MULTI_AVG_PREFIX + "+".join(scan_nums)
+        avg_label = f"average ({'+'.join(scan_nums)})"
+        
+        # Store in multi-averages dict
+        self._xes_multi_avgs[avg_key] = (xt, yt)
+        
+        # Also update legacy single average for backward compatibility
         self._xes_avg = (xt, yt)
         self._xes_avg_norm_factor = None
-        self.xes_panel.lbl_norm.setText("Average: no normalisation")
+        self.xes_panel.lbl_norm.setText(f"Average [{'+'.join(scan_nums)}]: no normalisation")
 
-        # Insert/replace special rows
-        self._upsert_xes_special_row(AVG_KEY, "average", checked=True)
+        # Insert/replace special rows - use the new named average
+        self._upsert_xes_special_row(avg_key, avg_label, checked=True)
 
         # Remove stale background-subtracted row
         self._xes_avg_bkgsub = None
@@ -730,7 +989,8 @@ class MainWindow(QMainWindow):
         self.update_status_label()
         if hasattr(self, "_update_xes_buttons"):
             self._update_xes_buttons()
-        self.status.showMessage(f"Averaged {len(idxs)} scan(s)", 4000)
+        self.status.showMessage(f"Created average: {avg_label}", 4000)
+        logger.info(f"Created multi-scan average: {avg_key}")
     def _regrid_and_average(self, x_list: List[np.ndarray], y_list: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
         if len(x_list) == 1:
             return x_list[0], y_list[0]
@@ -868,12 +1128,30 @@ class MainWindow(QMainWindow):
 
         try:
             # 2) Load it using the selected channel (Upper/Lower)
+            # Check if cross-channel normalisation is enabled
             use_upper = self.xes_panel.rb_upper.isChecked()
-            channel = "upper" if use_upper else "lower"
+            cross_channel = False
+            if hasattr(self.xes_panel, 'chk_cross_channel'):
+                cross_channel = self.xes_panel.chk_cross_channel.isChecked()
+            
+            # If cross-channel, use opposite channel for loading normalisation spectrum
+            if cross_channel:
+                # Use opposite channel
+                norm_channel = "lower" if use_upper else "upper"
+                norm_label = "Lower" if use_upper else "Upper"
+                logger.info(f"Cross-channel normalisation: loading {norm_label} channel for normalisation")
+            else:
+                norm_channel = "upper" if use_upper else "lower"
+                norm_label = "Upper" if use_upper else "Lower"
+            
+            channel = norm_channel
             x_ext, y_ext = i20_loader.xes_from_path(path, channel=channel, type="XES")
 
             # 3) Let the user select an area on that external spectrum
-            dlg = NormaliseDialog(x_ext, y_ext, parent=self, title=f"Select area (XES {'Upper' if use_upper else 'Lower'})")
+            title_suffix = f"{norm_label} channel"
+            if cross_channel:
+                title_suffix += " (cross-channel)"
+            dlg = NormaliseDialog(x_ext, y_ext, parent=self, title=f"Select area (XES {title_suffix})")
             if dlg.exec() != QDialog.Accepted:
                 return
             area = dlg.selected_area()
@@ -1093,21 +1371,40 @@ class MainWindow(QMainWindow):
         else:
             self.xes_panel.list.addItem(it_new)
     def _refresh_xes_plot(self):
+        """
+        Refresh the XES plot with all checked scans and averages.
+        
+        Supports multiple named averages (e.g., average_279496+279517).
+        """
         curves = []
         show_average = False
         show_bkgsub = False
+        checked_averages = []  # List of (key, label) for checked multi-averages
         real_idx = 0
 
         # Determine which specials are checked and collect real curves
         for row in range(self.xes_panel.list.count()):
             lit = self.xes_panel.list.item(row)
             key = lit.data(SPECIAL_ROLE)
+            
+            # Handle legacy single average
             if key == AVG_KEY:
                 show_average = (lit.checkState() == Qt.CheckState.Checked)
                 continue
+            
+            # Handle background-subtracted average
             if key == BKSUB_KEY:
                 show_bkgsub = (lit.checkState() == Qt.CheckState.Checked)
                 continue
+            
+            # Handle multi-averages (keys starting with "average_")
+            if key and isinstance(key, str) and key.startswith(MULTI_AVG_PREFIX) and key != AVG_KEY:
+                if lit.checkState() == Qt.CheckState.Checked:
+                    label = lit.text()
+                    checked_averages.append((key, label))
+                continue
+            
+            # Regular scan item
             if real_idx >= len(self._xes_items):
                 break
             if lit.checkState() == Qt.CheckState.Checked:
@@ -1121,22 +1418,76 @@ class MainWindow(QMainWindow):
                 })
             real_idx += 1
 
-        # Special overlays
+        # Special overlays - legacy single average
         avg = None
         if self._xes_avg is not None and show_average:
             avg = {"x": self._xes_avg[0], "y": self._xes_avg[1], "label": "Average (XES)"}
+        
+        # Add multiple averages as curves (with emphasis)
+        for avg_key, avg_label in checked_averages:
+            if avg_key in self._xes_multi_avgs:
+                x, y = self._xes_multi_avgs[avg_key]
+                curves.append({
+                    "x": x, 
+                    "y": y, 
+                    "label": avg_label,
+                    "alpha": 1.0,
+                    "color": "black",  # Emphasize averages
+                })
+                # Use the last checked average as the "main" average for dataset
+                if avg is None:
+                    avg = {"x": x, "y": y, "label": avg_label}
+        
         if self._xes_avg_bkgsub is not None and show_bkgsub:
             bx, by = self._xes_avg_bkgsub
             curves.append({"x": bx, "y": by, "label": "Average bkg-sub", "alpha": 1.0, "color": "tab:purple"})
 
-        # Draw
-        try:
-            self.plot.plot_xes_bundle(curves, avg=avg, title="XES scans (overlays)")
-        except Exception:
-            if avg is not None:
-                self.plot.plot(DataSet("1D", x=avg["x"], y=avg["y"], xlabel="ω (eV)", ylabel="Intensity (XES)"))
-            else:
-                self.plot.plot(None)
+        # Draw using the dedicated XES plot (Plot1D)
+        if hasattr(self, 'xes_plot'):
+            self.xes_plot.clear()
+            self.xes_plot.setGraphTitle("XES scans (overlays)")
+            
+            # Plot individual curves
+            for curve in curves:
+                x = curve.get('x')
+                y = curve.get('y')
+                if x is None or y is None:
+                    continue
+                label = curve.get('label', 'Scan')
+                color = curve.get('color', None)
+                alpha = curve.get('alpha', 0.9)
+                
+                # Determine line width based on curve type
+                linewidth = 2.5 if color == 'black' else 1.0
+                
+                self.xes_plot.addCurve(
+                    x, y,
+                    legend=label,
+                    color=color,
+                    linewidth=linewidth,
+                )
+            
+            # Plot average with emphasis (if legacy single average)
+            if avg is not None and not any(c.get('label') == avg.get('label') for c in curves):
+                self.xes_plot.addCurve(
+                    avg['x'], avg['y'],
+                    legend=avg.get('label', 'Average'),
+                    color='black',
+                    linewidth=2.5
+                )
+            
+            self.xes_plot.setGraphXLabel("Energy (eV)")
+            self.xes_plot.setGraphYLabel("Intensity")
+            self.xes_plot.resetZoom()
+        else:
+            # Fallback to old method
+            try:
+                self.plot.plot_xes_bundle(curves, avg=avg, title="XES scans (overlays)")
+            except Exception:
+                if avg is not None:
+                    self.plot.plot(DataSet("1D", x=avg["x"], y=avg["y"], xlabel="ω (eV)", ylabel="Intensity (XES)"))
+                else:
+                    self.plot.plot(None)
 
         if avg is not None:
             self.dataset = DataSet("1D", x=avg["x"], y=avg["y"], xlabel="ω (eV)", ylabel="Intensity (XES)")
@@ -1230,7 +1581,41 @@ class MainWindow(QMainWindow):
             return v / 5.0 if sl.maximum() > 3 else v
         except Exception:
             return 1.0
+
+    def _on_profile_extracted(self):
+        """
+        Handler for profile extraction in new RXESWidget.
+        
+        In the new architecture, profiles are extracted via the silx profile
+        toolbar directly. This handler is called when a profile is extracted
+        and can be used for additional processing or logging.
+        """
+        logger.info("Profile extracted via silx toolbar")
+        
+        # Get the last extracted profile if needed
+        if hasattr(self.plot, 'getLastProfile'):
+            profile = self.plot.getLastProfile()
+            if profile:
+                x, y, label = profile
+                logger.debug(f"Profile: {label}, {len(x)} points")
+                
+                # Store for potential saving
+                self._last_profiles = [(x, y, label)]
+        
+        self.update_ui_state()
+
     def update_profiles(self):
+        """
+        Update profile extraction for old-style plot widget.
+        
+        In the new RXESWidget architecture, profile extraction is handled
+        automatically by the silx profile toolbar, so this method is
+        a no-op.
+        """
+        # Profiles are now handled by silx toolbar
+        logger.debug("update_profiles skipped (using silx profile toolbar)")
+        return
+        
         self._last_profiles = []
         if self.dataset is None or self.dataset.kind != "2D":
             return

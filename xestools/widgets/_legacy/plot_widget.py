@@ -13,7 +13,7 @@ from matplotlib.lines import Line2D
 from matplotlib.artist import Artist
 import matplotlib.pyplot as plt
 
-from i20_xes.modules.dataset import DataSet
+from xestools.modules.dataset import DataSet
 
 # Set up logging
 logger = logging.getLogger(__name__)

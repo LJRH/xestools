@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QGroupBox, QFormLayout, QLabel, QPushButton, QLineEdit,
-    QVBoxLayout, QHBoxLayout, QRadioButton, QSlider
+    QVBoxLayout, QHBoxLayout, QRadioButton, QSlider, QCheckBox, QSpinBox
 )
 
 class IOPanel(QGroupBox):
@@ -53,14 +53,78 @@ class RXESPanel(QGroupBox):
 
         # Mode selection: Incident Energy vs Energy Transfer
         mode_box = QGroupBox("Display mode")
-        mode_layout = QHBoxLayout(mode_box)
+        mode_layout = QVBoxLayout(mode_box)
+        mode_row1 = QHBoxLayout()
         self.rb_mode_incident = QRadioButton("Incident Energy")
         self.rb_mode_transfer = QRadioButton("Energy Transfer")
         self.rb_mode_incident.setChecked(True)
         self.rb_mode_incident.setToolTip("Plot Ω (X) vs ω (Y)")
         self.rb_mode_transfer.setToolTip("Plot Ω (X) vs (Ω − ω) (Y)")
-        mode_layout.addWidget(self.rb_mode_incident)
-        mode_layout.addWidget(self.rb_mode_transfer)
+        mode_row1.addWidget(self.rb_mode_incident)
+        mode_row1.addWidget(self.rb_mode_transfer)
+        mode_layout.addLayout(mode_row1)
+        
+        # Contour overlay controls
+        mode_row2 = QHBoxLayout()
+        self.chk_contours = QCheckBox("Show contours")
+        self.chk_contours.setToolTip("Overlay contour lines on the RXES map")
+        self.spn_contour_levels = QSpinBox()
+        self.spn_contour_levels.setRange(3, 30)
+        self.spn_contour_levels.setValue(10)
+        self.spn_contour_levels.setToolTip("Number of contour levels")
+        self.spn_contour_levels.setEnabled(False)
+        mode_row2.addWidget(self.chk_contours)
+        mode_row2.addWidget(QLabel("Levels:"))
+        mode_row2.addWidget(self.spn_contour_levels)
+        mode_row2.addStretch(1)
+        mode_layout.addLayout(mode_row2)
+        
+        # Additional contour options
+        mode_row3 = QHBoxLayout()
+        from PySide6.QtWidgets import QComboBox, QDoubleSpinBox
+        self.cmb_contour_color = QComboBox()
+        self.cmb_contour_color.addItems(["white", "black", "red", "blue", "yellow", "cyan", "magenta", "gray"])
+        self.cmb_contour_color.setToolTip("Contour line color")
+        self.cmb_contour_color.setEnabled(False)
+        self.spn_contour_width = QDoubleSpinBox()
+        self.spn_contour_width.setRange(0.1, 5.0)
+        self.spn_contour_width.setValue(0.5)
+        self.spn_contour_width.setSingleStep(0.1)
+        self.spn_contour_width.setToolTip("Contour line width")
+        self.spn_contour_width.setEnabled(False)
+        mode_row3.addWidget(QLabel("Color:"))
+        mode_row3.addWidget(self.cmb_contour_color)
+        mode_row3.addWidget(QLabel("Width:"))
+        mode_row3.addWidget(self.spn_contour_width)
+        mode_row3.addStretch(1)
+        mode_layout.addLayout(mode_row3)
+        
+        # Contour display features (island, gravity, labels)
+        mode_row4 = QHBoxLayout()
+        self.chk_contour_fill = QCheckBox("Fill islands")
+        self.chk_contour_fill.setToolTip("Fill closed contour regions with semi-transparent color")
+        self.chk_contour_fill.setEnabled(False)
+        self.chk_contour_gravity = QCheckBox("Show centers")
+        self.chk_contour_gravity.setToolTip("Show gravity centers (centroids) of closed contours")
+        self.chk_contour_gravity.setEnabled(False)
+        self.chk_contour_labels = QCheckBox("Show values")
+        self.chk_contour_labels.setToolTip("Label contours with their intensity values")
+        self.chk_contour_labels.setEnabled(False)
+        mode_row4.addWidget(self.chk_contour_fill)
+        mode_row4.addWidget(self.chk_contour_gravity)
+        mode_row4.addWidget(self.chk_contour_labels)
+        mode_row4.addStretch(1)
+        mode_layout.addLayout(mode_row4)
+        
+        # Connect checkbox to enable/disable all contour options
+        def enable_contour_options(enabled):
+            self.spn_contour_levels.setEnabled(enabled)
+            self.cmb_contour_color.setEnabled(enabled)
+            self.spn_contour_width.setEnabled(enabled)
+            self.chk_contour_fill.setEnabled(enabled)
+            self.chk_contour_gravity.setEnabled(enabled)
+            self.chk_contour_labels.setEnabled(enabled)
+        self.chk_contours.toggled.connect(enable_contour_options)
 
         # Normalisation section (before ROI)
         norm_box = QGroupBox("Normalisation")

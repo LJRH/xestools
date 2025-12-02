@@ -538,10 +538,10 @@ def main():
         
         LOGGER.info("Importing main window...")
         try:
-            from i20_xes.main_gui import MainWindow
+            from xestools.main_gui import MainWindow
         except ImportError as e:
             LOGGER.error(f"Failed to import MainWindow: {e}")
-            LOGGER.error("Check that the i20_xes package is properly installed")
+            LOGGER.error("Check that the xestools package is properly installed")
             sys.exit(1)
         
         LOGGER.info("Creating main window...")

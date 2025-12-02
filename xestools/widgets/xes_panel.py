@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QRadioButton,
-    QListWidget, QListWidgetItem, QAbstractItemView
+    QListWidget, QListWidgetItem, QAbstractItemView, QCheckBox
 )
 
 SPECIAL_ROLE = Qt.UserRole + 1  # mark special rows like 'average'/'average_bkgsub'
@@ -58,6 +58,18 @@ class XESPanel(QGroupBox):
         rown.addWidget(self.btn_load_xes)
         rown.addStretch(1)
         norm_layout.addLayout(rown)
+        
+        # Cross-channel normalisation option
+        rown2 = QHBoxLayout()
+        self.chk_cross_channel = QCheckBox("Use opposite channel for normalisation")
+        self.chk_cross_channel.setToolTip(
+            "When checked, loads normalisation spectrum from the opposite detector channel.\n"
+            "E.g., if current channel is Lower, load Upper for normalisation."
+        )
+        rown2.addWidget(self.chk_cross_channel)
+        rown2.addStretch(1)
+        norm_layout.addLayout(rown2)
+        
         norm_layout.addWidget(self.lbl_norm)
 
         # Background section

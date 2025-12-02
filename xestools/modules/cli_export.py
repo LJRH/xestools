@@ -1,13 +1,13 @@
 """
-CLI Export Module for I20 XES/RXES Data
+CLI Export Module for XESTools (I20 XES/RXES Data)
 
 Provides export functions for command-line data analysis with pandas and xarray.
 Enables batch processing, statistical analysis, and integration with ML pipelines.
 
 Usage:
-    from i20_xes.modules import i20_loader
-    from i20_xes.modules.scan import Scan
-    from i20_xes.modules.cli_export import scan_to_dataframe
+    from xestools.modules import i20_loader
+    from xestools.modules.scan import Scan
+    from xestools.modules.cli_export import scan_to_dataframe
     
     # Load data
     scan = Scan()

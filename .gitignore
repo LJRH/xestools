@@ -7,9 +7,16 @@
 
 # Ignore Python bytecode
 __pycache__/
+_legacy/
 *.py[cod]
 
 i20xes.sif
 
 # Ignore debug logs
 logs/**
+docs/**
+
+# OpenCode session documentation (local only)
+docs/opencode_sessions/
+
+uv.lock
